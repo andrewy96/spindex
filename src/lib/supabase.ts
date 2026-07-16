@@ -11,6 +11,7 @@ export interface Profile {
   id: string;
   handle: string;
   display_name: string;
+  avatar_url: string | null;
   city: string | null;
   stars: number;
   wins: number;
@@ -25,6 +26,9 @@ export interface Challenge {
   venue: string | null;
   battle_at: string | null;
   wager: number;
+  format: "single" | "team";
+  team_size: number;
+  target_score: number;
   note: string | null;
   status: "open" | "accepted" | "completed" | "cancelled";
   opponent: string | null;
@@ -51,6 +55,9 @@ export interface Match {
   rounds: Round[];
   winner: string;
   wager: number;
+  format: "single" | "team";
+  team_size: number;
+  target_score: number;
   stars_moved: number | null;
   status: "pending" | "confirmed" | "rejected";
   reported_by: string;
@@ -67,7 +74,7 @@ export const FINISH_POINTS: Record<Finish, number> = {
   xtreme: 3,
 };
 
-export const WIN_SCORE = 4;
+export const DEFAULT_WIN_SCORE = 4;
 
 export const MY_CITIES = [
   "Kuala Lumpur",

@@ -11,7 +11,7 @@ import {
   Finish,
   Round,
   FINISH_POINTS,
-  WIN_SCORE,
+  DEFAULT_WIN_SCORE,
 } from "@/lib/supabase";
 
 const FINISHES: { key: Finish; color: string; label: (d: Dict) => string }[] = [
@@ -29,6 +29,7 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [name1, setName1] = useState("");
   const [name2, setName2] = useState("");
+  const [freeTargetScore, setFreeTargetScore] = useState(DEFAULT_WIN_SCORE);
   const [rounds, setRounds] = useState<Round[]>([]);
   const [reportState, setReportState] = useState<"idle" | "busy" | "done" | "error">("idle");
 
@@ -61,7 +62,9 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
     return [a, b];
   }, [rounds]);
 
-  const winner = s1 >= WIN_SCORE ? 1 : s2 >= WIN_SCORE ? 2 : null;
+  const targetScore = challenge?.target_score ?? freeTargetScore;
+  const winner = s1 >= targetScore ? 1 : s2 >= targetScore ? 2 : null;
+  const firstToLabel = dict.battle.firstToPoints.replace("{points}", String(targetScore));
 
   const addRound = (side: 1 | 2, finish: Finish) => {
     if (winner) return;
@@ -96,13 +99,30 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
   return (
     <div className="mx-auto max-w-2xl">
       {!challenge && (
-        <p className="mb-4 text-center text-xs text-ink-dim">
-          {dict.battle.freePlay} · {dict.battle.firstTo}
-        </p>
+        <div className="mb-4 flex flex-wrap items-center justify-center gap-3 text-xs text-ink-dim">
+          <span>{dict.battle.freePlay}</span>
+          <label className="flex items-center gap-2">
+            <span>{dict.battle.targetScore}</span>
+            <input
+              type="number"
+              min={1}
+              max={30}
+              value={freeTargetScore}
+              onChange={(e) =>
+                setFreeTargetScore(Math.max(1, Math.min(30, Number(e.target.value) || 1)))
+              }
+              disabled={rounds.length > 0}
+              className="w-16 rounded-md border border-edge bg-panel px-2 py-1 text-center text-ink outline-none focus:border-accent disabled:opacity-50"
+            />
+          </label>
+          <span>{firstToLabel}</span>
+        </div>
       )}
       {challenge && (
         <p className="mb-4 text-center text-xs text-accent-2">
-          ⚔ {name1} vs {name2} · ★{challenge.wager} · {dict.battle.firstTo}
+          ⚔ {name1} vs {name2} ·{" "}
+          {challenge.format === "team" ? dict.battle.teamEvent : dict.battle.singleBattle} ·
+          ★{challenge.wager} · {firstToLabel}
         </p>
       )}
 
@@ -170,7 +190,7 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
         </button>
         <button
           onClick={reset}
-          disabled={rounds.length === 0}
+          disabled={rounds.length === 0 || reportState === "done"}
           className="clip-x border border-edge bg-panel px-5 py-2.5 font-display text-xs font-bold tracking-wider text-ink-dim transition enabled:hover:text-ink disabled:opacity-40"
         >
           {dict.battle.resetMatch}

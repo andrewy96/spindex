@@ -1,0 +1,21 @@
+# Remote auth config for the linked Supabase project (applied via `supabase config push`).
+project_id = "beylab-x"
+
+[auth]
+enable_signup = true
+
+[auth.sms]
+# Phone + password signups; users are not forced through SMS confirmation.
+enable_signup = true
+enable_confirmations = false
+
+[auth.sms.twilio]
+# No SMS provider is needed because phone confirmation is disabled.
+enabled = false
+account_sid = ""
+message_service_sid = ""
+auth_token = ""
+
+[storage.vector]
+# Vector buckets require a paid Supabase tier and are not used by this app.
+enabled = false

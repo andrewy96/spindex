@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Dict, Locale, switchLocalePath } from "@/i18n";
 import { useAuth } from "@/lib/auth";
 
@@ -26,6 +26,38 @@ function AuthChip({ locale, dict }: { locale: Locale; dict: Dict }) {
       className="rounded-md border border-edge px-2.5 py-1 text-xs font-semibold text-ink-dim transition hover:border-accent hover:text-accent"
     >
       {dict.nav.login}
+    </Link>
+  );
+}
+
+function AdminShortcut({ locale, dict }: { locale: Locale; dict: Dict }) {
+  const { session } = useAuth();
+  const [allowed, setAllowed] = useState(false);
+
+  useEffect(() => {
+    if (!session) {
+      setAllowed(false);
+      return;
+    }
+    let active = true;
+    fetch("/api/admin/me", {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    }).then((res) => {
+      if (active) setAllowed(res.ok);
+    });
+    return () => {
+      active = false;
+    };
+  }, [session]);
+
+  if (!allowed) return null;
+
+  return (
+    <Link
+      href={`/${locale}/admin`}
+      className="rounded-md border border-accent-2/40 bg-accent-2/10 px-2.5 py-1 text-xs font-semibold text-accent-2 transition hover:bg-accent-2/20"
+    >
+      {dict.nav.admin}
     </Link>
   );
 }
@@ -88,6 +120,7 @@ export default function Nav({ locale, dict }: { locale: Locale; dict: Dict }) {
             </Link>
           ))}
           <div className="ml-2 flex items-center gap-2">
+            <AdminShortcut locale={locale} dict={dict} />
             <AuthChip locale={locale} dict={dict} />
             <Suspense fallback={null}>
               <LangSwitcher locale={locale} />
@@ -96,6 +129,7 @@ export default function Nav({ locale, dict }: { locale: Locale; dict: Dict }) {
         </div>
 
         <div className="ml-auto flex items-center gap-2 sm:hidden">
+          <AdminShortcut locale={locale} dict={dict} />
           <AuthChip locale={locale} dict={dict} />
           <Suspense fallback={null}>
             <LangSwitcher locale={locale} />

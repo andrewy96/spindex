@@ -106,16 +106,24 @@ export function RegisterForm({ locale, dict }: { locale: Locale; dict: Dict }) {
     if (password.length < 8) return setError(dict.auth.passwordMin);
     if (!/^[a-zA-Z0-9_]{3,20}$/.test(handle)) return setError(dict.auth.handleHint);
     setBusy(true);
-    const { error: err } = await supabase!.auth.signUp({
+    const res = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        phone: e164,
+        password,
+        handle,
+        displayName,
+        city,
+      }),
+    });
+    if (!res.ok) {
+      setBusy(false);
+      return setError(dict.auth.registerFailed);
+    }
+    const { error: err } = await supabase!.auth.signInWithPassword({
       phone: e164,
       password,
-      options: {
-        data: {
-          handle,
-          display_name: displayName || handle,
-          city: city || null,
-        },
-      },
     });
     setBusy(false);
     if (err) return setError(dict.auth.registerFailed);

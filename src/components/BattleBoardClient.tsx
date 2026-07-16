@@ -4,10 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Dict, Locale } from "@/i18n";
 import { useAuth } from "@/lib/auth";
-import { supabase, Challenge, MY_CITIES } from "@/lib/supabase";
+import { supabase, Challenge, DEFAULT_WIN_SCORE, MY_CITIES } from "@/lib/supabase";
 
 const inputCls =
   "w-full rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent";
+type ChallengeFormat = Challenge["format"];
 
 function StatusChip({ status, dict }: { status: Challenge["status"]; dict: Dict }) {
   const map = {
@@ -55,6 +56,13 @@ function ChallengeCard({
   const isHost = meId === c.host;
   const isParticipant = meId === c.host || meId === c.opponent;
   const when = fmtWhen(c.battle_at, locale);
+  const format = c.format ?? "single";
+  const teamSize = c.team_size ?? 1;
+  const targetScore = c.target_score ?? DEFAULT_WIN_SCORE;
+  const formatLabel =
+    format === "team"
+      ? dict.battle.teamFormat.replace("{count}", String(teamSize))
+      : dict.battle.singleBattle;
 
   return (
     <div className="panel flex flex-col gap-3 p-4">
@@ -81,6 +89,14 @@ function ChallengeCard({
             {c.city}
             {c.venue ? ` · ${c.venue}` : ""}
             {when ? ` · ${when}` : ""}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <span className="rounded bg-accent-2/10 px-2 py-0.5 text-[10px] font-semibold text-accent-2">
+              {formatLabel}
+            </span>
+            <span className="rounded bg-panel px-2 py-0.5 text-[10px] font-semibold text-ink-dim">
+              {dict.battle.firstToPoints.replace("{points}", String(targetScore))}
+            </span>
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1.5">
@@ -134,8 +150,15 @@ export default function BattleBoardClient({ locale, dict }: { locale: Locale; di
   const [pCity, setPCity] = useState("Kuala Lumpur");
   const [pVenue, setPVenue] = useState("");
   const [pWhen, setPWhen] = useState("");
+  const [pFormat, setPFormat] = useState<ChallengeFormat>("single");
+  const [pTeamSize, setPTeamSize] = useState(2);
   const [pWager, setPWager] = useState(1);
+  const [pTargetScore, setPTargetScore] = useState(DEFAULT_WIN_SCORE);
   const [pNote, setPNote] = useState("");
+  const activeTeamSize = pFormat === "team" ? pTeamSize : 1;
+  const minPostWager = activeTeamSize;
+  const maxPostWager = profile ? Math.min(50, profile.stars) : 0;
+  const canCoverPost = maxPostWager >= minPostWager;
 
   const load = useCallback(async () => {
     if (!supabase) return;
@@ -149,7 +172,11 @@ export default function BattleBoardClient({ locale, dict }: { locale: Locale; di
     if (tab === "open") {
       q = q.eq("status", "open");
       if (city !== "all") q = q.eq("city", city);
-    } else if (profile) {
+    } else {
+      if (!profile) {
+        setChallenges([]);
+        return;
+      }
       q = q.or(`host.eq.${profile.id},opponent.eq.${profile.id}`);
     }
     const { data, error: err } = await q;
@@ -159,6 +186,14 @@ export default function BattleBoardClient({ locale, dict }: { locale: Locale; di
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const nextWager = Math.min(
+      Math.max(pWager, minPostWager),
+      Math.max(minPostWager, maxPostWager)
+    );
+    if (pWager !== nextWager) setPWager(nextWager);
+  }, [maxPostWager, minPostWager, pWager]);
 
   if (!enabled) {
     return (
@@ -171,6 +206,16 @@ export default function BattleBoardClient({ locale, dict }: { locale: Locale; di
   const post = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supabase || !profile) return;
+    if (
+      !canCoverPost ||
+      pWager < minPostWager ||
+      pWager > maxPostWager ||
+      pTargetScore < 1 ||
+      pTargetScore > 30
+    ) {
+      setError(dict.battle.notEnoughStars);
+      return;
+    }
     setBusy(true);
     setError(null);
     const { error: err } = await supabase.from("challenges").insert({
@@ -179,6 +224,9 @@ export default function BattleBoardClient({ locale, dict }: { locale: Locale; di
       venue: pVenue || null,
       battle_at: pWhen ? new Date(pWhen).toISOString() : null,
       wager: pWager,
+      format: pFormat,
+      team_size: activeTeamSize,
+      target_score: pTargetScore,
       note: pNote || null,
     });
     setBusy(false);
@@ -265,6 +313,25 @@ export default function BattleBoardClient({ locale, dict }: { locale: Locale; di
           <div className="sm:col-span-2 font-display text-sm font-bold tracking-wider">
             {dict.battle.postTitle}
           </div>
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs text-ink-dim">{dict.battle.eventFormat}</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(["single", "team"] as const).map((format) => (
+                <button
+                  key={format}
+                  type="button"
+                  onClick={() => setPFormat(format)}
+                  className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                    pFormat === format
+                      ? "border-accent bg-accent/10 text-accent"
+                      : "border-edge bg-panel text-ink-dim hover:text-ink"
+                  }`}
+                >
+                  {format === "single" ? dict.battle.singleBattle : dict.battle.teamEvent}
+                </button>
+              ))}
+            </div>
+          </div>
           <div>
             <label className="mb-1 block text-xs text-ink-dim">{dict.battle.cityFilter}</label>
             <select value={pCity} onChange={(e) => setPCity(e.target.value)} className={inputCls} required>
@@ -286,19 +353,58 @@ export default function BattleBoardClient({ locale, dict }: { locale: Locale; di
               className={inputCls}
             />
           </div>
+          {pFormat === "team" && (
+            <div>
+              <label className="mb-1 block text-xs text-ink-dim">{dict.battle.peopleQty}</label>
+              <input
+                type="number"
+                min={2}
+                max={20}
+                value={pTeamSize}
+                onChange={(e) =>
+                  setPTeamSize(Math.max(2, Math.min(20, Number(e.target.value) || 2)))
+                }
+                className={inputCls}
+                required
+              />
+            </div>
+          )}
           <div>
-            <label className="mb-1 block text-xs text-ink-dim">
-              {dict.battle.wager} (★1–{Math.max(1, Math.min(10, profile.stars))})
-            </label>
+            <label className="mb-1 block text-xs text-ink-dim">{dict.battle.targetScore}</label>
             <input
               type="number"
               min={1}
-              max={Math.max(1, Math.min(10, profile.stars))}
-              value={pWager}
-              onChange={(e) => setPWager(Number(e.target.value))}
+              max={30}
+              value={pTargetScore}
+              onChange={(e) =>
+                setPTargetScore(Math.max(1, Math.min(30, Number(e.target.value) || 1)))
+              }
               className={inputCls}
               required
             />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-ink-dim">
+              {dict.battle.starQuantity}{" "}
+              {canCoverPost
+                ? `(★${minPostWager}–${maxPostWager})`
+                : `(${dict.battle.notEnoughStars})`}
+            </label>
+            <input
+              type="number"
+              min={minPostWager}
+              max={Math.max(minPostWager, maxPostWager)}
+              value={pWager}
+              onChange={(e) => setPWager(Number(e.target.value))}
+              className={inputCls}
+              disabled={!canCoverPost}
+              required
+            />
+            {pFormat === "team" && (
+              <p className="mt-1 text-[11px] text-ink-dim">
+                {dict.battle.starMinimumHint.replace("{count}", String(activeTeamSize))}
+              </p>
+            )}
           </div>
           <div className="sm:col-span-2">
             <label className="mb-1 block text-xs text-ink-dim">{dict.battle.note}</label>
@@ -314,7 +420,7 @@ export default function BattleBoardClient({ locale, dict }: { locale: Locale; di
           <div className="sm:col-span-2 flex items-center gap-3">
             <button
               type="submit"
-              disabled={busy}
+              disabled={busy || !canCoverPost}
               className="clip-x bg-accent px-5 py-2.5 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
             >
               {dict.battle.postCta}
