@@ -80,6 +80,65 @@ export interface Match {
   p2_profile?: Profile;
 }
 
+export interface GatheringMember {
+  gathering_id: string;
+  user_id: string;
+  status: "joined" | "waitlisted";
+  created_at: string;
+  profile?: Profile;
+}
+
+export interface Gathering {
+  id: string;
+  host: string;
+  title: string;
+  city: string;
+  venue: string;
+  gather_at: string;
+  fee_type: "free" | "paid";
+  fee_amount: number | null;
+  capacity: number | null;
+  join_mode: "open" | "waitlist";
+  note: string | null;
+  status: "open" | "cancelled";
+  created_at: string;
+  host_profile?: Profile;
+  members?: GatheringMember[];
+}
+
+export type TournamentFormat =
+  | "single_elimination"
+  | "double_elimination"
+  | "round_robin"
+  | "swiss"
+  | "free_for_all"
+  | "leaderboard";
+
+export interface TournamentPlayer {
+  tournament_id: string;
+  user_id: string;
+  status: "joined" | "waitlisted";
+  seed: number | null;
+  created_at: string;
+  profile?: Profile;
+}
+
+export interface CommunityTournament {
+  id: string;
+  host: string;
+  name: string;
+  city: string;
+  venue: string;
+  starts_at: string;
+  format: TournamentFormat;
+  max_players: number;
+  note: string | null;
+  status: "open" | "started" | "completed" | "cancelled";
+  created_at: string;
+  host_profile?: Profile;
+  players?: TournamentPlayer[];
+}
+
 /** Select for matches with both player profiles joined. */
 export const MATCH_SELECT =
   "*, p1_profile:profiles!matches_p1_fkey(*), p2_profile:profiles!matches_p2_fkey(*)";

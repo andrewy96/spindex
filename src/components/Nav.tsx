@@ -90,6 +90,7 @@ export default function Nav({ locale, dict }: { locale: Locale; dict: Dict }) {
     { href: `/${locale}/rankings`, label: dict.nav.rankings },
     { href: `/${locale}/tournaments`, label: dict.nav.tournaments },
     { href: `/${locale}/clubs`, label: dict.nav.clubs },
+    { href: `/${locale}/gatherings`, label: dict.nav.gatherings },
     { href: `/${locale}/market`, label: dict.nav.market },
     { href: `/${locale}/battle`, label: dict.nav.battle },
   ];

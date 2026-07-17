@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getDict, isLocale, Locale, locales } from "@/i18n";
+import TournamentHostClient from "@/components/TournamentHostClient";
 
 export function generateStaticParams() {
   return locales.map((locale) => ({ locale }));
@@ -53,8 +54,10 @@ export default async function TournamentsPage({
       <h1 className="font-display text-3xl font-bold tracking-wide">{t.title}</h1>
       <p className="mb-10 mt-1 text-sm text-ink-dim">{t.subtitle}</p>
 
+      <TournamentHostClient locale={locale} dict={dict} />
+
       {/* Scoring */}
-      <section>
+      <section className="mt-12">
         <h2 className="font-display text-xl font-bold tracking-wide">{t.scoringTitle}</h2>
         <p className="mt-1 text-sm text-ink-dim">{t.scoringIntro}</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
