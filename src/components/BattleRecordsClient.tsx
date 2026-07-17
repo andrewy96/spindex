@@ -4,13 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Dict, Locale } from "@/i18n";
 import { useAuth } from "@/lib/auth";
-import { Match, Round, supabase } from "@/lib/supabase";
+import { MATCH_SELECT, Match, Round, supabase } from "@/lib/supabase";
 import { profileDisplayName } from "@/lib/profileName";
 import { matchToShareData } from "@/lib/shareCard";
 import ShareMatchModal from "./ShareMatchModal";
-
-const MATCH_SELECT =
-  "*, p1_profile:profiles!matches_p1_fkey(*), p2_profile:profiles!matches_p2_fkey(*)";
 
 const FINISH_COLOR: Record<string, string> = {
   spin: "var(--color-sta)",

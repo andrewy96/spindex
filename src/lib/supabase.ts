@@ -75,6 +75,10 @@ export interface Match {
   p2_profile?: Profile;
 }
 
+/** Select for matches with both player profiles joined. */
+export const MATCH_SELECT =
+  "*, p1_profile:profiles!matches_p1_fkey(*), p2_profile:profiles!matches_p2_fkey(*)";
+
 export const FINISH_POINTS: Record<Finish, number> = {
   spin: 1,
   over: 2,

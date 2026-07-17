@@ -4,8 +4,17 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Dict, Locale } from "@/i18n";
 import { useAuth } from "@/lib/auth";
-import { supabase, Challenge, DEFAULT_WIN_SCORE, MY_CITIES } from "@/lib/supabase";
+import {
+  supabase,
+  Challenge,
+  DEFAULT_WIN_SCORE,
+  MATCH_SELECT,
+  Match,
+  MY_CITIES,
+} from "@/lib/supabase";
 import { profileDisplayName } from "@/lib/profileName";
+import { matchToShareData } from "@/lib/shareCard";
+import ShareMatchModal from "./ShareMatchModal";
 
 const inputCls =
   "w-full rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent";
@@ -57,6 +66,9 @@ function ChallengeCard({
   onCancel: (c: Challenge) => void;
   busy: boolean;
 }) {
+  const [shareMatch, setShareMatch] = useState<Match | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareError, setShareError] = useState(false);
   const isJudged = c.play_mode === "judge";
   const isJudge = isJudged && meId === c.host;
   const isHostPlayer = !isJudged && meId === c.host;
@@ -85,6 +97,23 @@ function ChallengeCard({
       : isJudged
         ? dict.battle.joinAsPlayer1
         : dict.battle.accept;
+
+  const openShare = async () => {
+    if (!supabase) return;
+    setShareBusy(true);
+    setShareError(false);
+    const { data } = await supabase
+      .from("matches")
+      .select(MATCH_SELECT)
+      .eq("challenge_id", c.id)
+      .eq("status", "confirmed")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    setShareBusy(false);
+    if (data) setShareMatch(data as unknown as Match);
+    else setShareError(true);
+  };
 
   const renderPlayer = (
     profile: Challenge["host_profile"] | Challenge["opponent_profile"],
@@ -181,7 +210,30 @@ function ChallengeCard({
             ⚔ {dict.battle.playNow}
           </Link>
         )}
+        {c.status === "completed" && (
+          <button
+            onClick={openShare}
+            disabled={shareBusy}
+            className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition enabled:hover:border-accent/60 enabled:hover:text-accent disabled:opacity-50"
+          >
+            ⤴ {dict.battle.share}
+          </button>
+        )}
+        {shareError && (
+          <span className="self-center text-xs font-semibold text-atk">
+            {dict.battle.errorGeneric}
+          </span>
+        )}
       </div>
+
+      {shareMatch && (
+        <ShareMatchModal
+          data={matchToShareData(shareMatch, meId, locale, dict)}
+          fileId={shareMatch.id}
+          dict={dict}
+          onClose={() => setShareMatch(null)}
+        />
+      )}
     </div>
   );
 }
