@@ -31,6 +31,7 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
   const [showPost, setShowPost] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [city, setCity] = useState("Kuala Lumpur");
@@ -134,6 +135,13 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
 
   const formatLabel = (key: TournamentFormat) =>
     formats.find((f) => f.key === key)?.label ?? key;
+
+  const copyShareLink = async (id: string) => {
+    const url = `${window.location.origin}/${locale}/tournaments/${id}`;
+    await navigator.clipboard.writeText(url);
+    setCopiedId(id);
+    window.setTimeout(() => setCopiedId(null), 1600);
+  };
 
   return (
     <section className="mt-12">
@@ -286,6 +294,12 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
                   )}
                 </div>
                 <div className="mt-auto flex flex-wrap gap-2">
+                  <Link href={`/${locale}/tournaments/${item.id}`} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:border-accent/60">
+                    {t.view}
+                  </Link>
+                  <button onClick={() => copyShareLink(item.id)} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent-2 transition hover:border-accent-2/60">
+                    {copiedId === item.id ? t.copied : t.shareLink}
+                  </button>
                   {!profile ? null : mine ? (
                     <button onClick={() => leave(item)} disabled={busy} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink disabled:opacity-50">
                       {t.leave}

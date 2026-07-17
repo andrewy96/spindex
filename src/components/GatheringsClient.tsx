@@ -31,6 +31,7 @@ export default function GatheringsClient({ locale, dict }: { locale: Locale; dic
   const [showPost, setShowPost] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const [title, setTitle] = useState("");
   const [pCity, setPCity] = useState("Kuala Lumpur");
@@ -125,6 +126,13 @@ export default function GatheringsClient({ locale, dict }: { locale: Locale; dic
     await supabase.from("gatherings").update({ status: "cancelled" }).eq("id", g.id);
     setBusy(false);
     load();
+  };
+
+  const copyShareLink = async (id: string) => {
+    const url = `${window.location.origin}/${locale}/gatherings/${id}`;
+    await navigator.clipboard.writeText(url);
+    setCopiedId(id);
+    window.setTimeout(() => setCopiedId(null), 1600);
   };
 
   return (
@@ -269,6 +277,12 @@ export default function GatheringsClient({ locale, dict }: { locale: Locale; dic
                   )}
                 </div>
                 <div className="mt-auto flex flex-wrap gap-2">
+                  <Link href={`/${locale}/gatherings/${g.id}`} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:border-accent/60">
+                    {dict.gatherings.view}
+                  </Link>
+                  <button onClick={() => copyShareLink(g.id)} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent-2 transition hover:border-accent-2/60">
+                    {copiedId === g.id ? dict.gatherings.copied : dict.gatherings.shareLink}
+                  </button>
                   {!profile ? null : mine ? (
                     <button onClick={() => leave(g)} disabled={busy} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink disabled:opacity-50">
                       {dict.gatherings.leave}
