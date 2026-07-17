@@ -23,6 +23,7 @@ import {
   shareSiteLabel,
 } from "@/lib/shareCard";
 import ShareMatchModal from "./ShareMatchModal";
+import ShootStart from "./ShootStart";
 
 const CHALLENGE_SELECT =
   "*, host_profile:profiles!challenges_host_fkey(*), opponent_profile:profiles!challenges_opponent_fkey(*), player1_profile:profiles!challenges_player1_fkey(*), player2_profile:profiles!challenges_player2_fkey(*)";
@@ -221,6 +222,9 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
           </div>
         ))}
       </div>
+
+      {/* Start / countdown — free play only (no account needed) */}
+      {!challenge && <ShootStart dict={dict} disabled={!!winner} />}
 
       {/* Finish buttons */}
       <div className="grid grid-cols-2 gap-4">

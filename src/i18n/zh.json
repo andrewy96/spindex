@@ -137,7 +137,15 @@
     "finishShortSpin": "旋转",
     "finishShortOver": "场外",
     "finishShortBurst": "爆裂",
-    "finishShortXtreme": "极限"
+    "finishShortXtreme": "极限",
+    "start": "开始",
+    "ready": "已就绪",
+    "goShoot": "GO SHOOT!!",
+    "voicePack": "语音包",
+    "voiceZh": "中文语音",
+    "voiceEn": "英文语音",
+    "voiceBeep": "电子音",
+    "voiceMute": "静音"
   },
   "profile": {
     "title": "个人资料设置",

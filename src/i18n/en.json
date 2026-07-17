@@ -137,7 +137,15 @@
     "finishShortSpin": "SPIN",
     "finishShortOver": "OVER",
     "finishShortBurst": "BURST",
-    "finishShortXtreme": "XTREME"
+    "finishShortXtreme": "XTREME",
+    "start": "START",
+    "ready": "READY",
+    "goShoot": "GO SHOOT!!",
+    "voicePack": "Voice pack",
+    "voiceZh": "Chinese voice",
+    "voiceEn": "English voice",
+    "voiceBeep": "Beep tones",
+    "voiceMute": "Muted"
   },
   "profile": {
     "title": "Profile settings",
