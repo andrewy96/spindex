@@ -344,8 +344,10 @@
     "adjustments": "Adjustments"
   },
   "rankings": {
-    "title": "Combo Rankings",
-    "subtitle": "Real tournament results — the winningest Beyblade X combos, ranked.",
+    "title": "Rankings",
+    "subtitle": "The top-ranked bladers in the community, by wins and stars.",
+    "comboTitle": "Combo Rankings",
+    "comboSubtitle": "Real tournament results — the winningest Beyblade X combos, ranked.",
     "updated": "Data updated",
     "colRank": "#",
     "colCombo": "Combo",

@@ -344,8 +344,10 @@
     "adjustments": "调整建议"
   },
   "rankings": {
-    "title": "组合排行榜",
-    "subtitle": "真实赛事数据——胜场最多的爆旋陀螺 X 组合排名。",
+    "title": "排行榜",
+    "subtitle": "社群中胜场与星星最高的玩家排名。",
+    "comboTitle": "组合排行榜",
+    "comboSubtitle": "真实赛事数据——胜场最多的爆旋陀螺 X 组合排名。",
     "updated": "数据更新于",
     "colRank": "#",
     "colCombo": "组合",
