@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SPINDEX</string>
+    <string name="title_activity_main">SPINDEX</string>
+    <string name="package_name">com.spindexmalaysia.app</string>
+    <string name="custom_url_scheme">com.spindexmalaysia.app</string>
+</resources>
