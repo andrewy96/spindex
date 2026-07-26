@@ -100,7 +100,7 @@ export function shareSampleText(d: ShareCardData): string {
     d.firstToLabel,
     Object.values(d.labels.finish).join(""),
     d.labels.url,
-    "0123456789:★+…SPINDEX",
+    "0123456789:★+…spindex",
   ].join(" ");
 }
 
@@ -117,6 +117,21 @@ export async function ensureFonts(sampleText: string): Promise<void> {
     ]);
   } catch {
     /* draw with whatever is available */
+  }
+}
+
+let logoImage: HTMLImageElement | null | undefined;
+
+/** Preloads the wordmark PNG so the sync canvas render can draw it directly. */
+export async function ensureLogoImage(): Promise<void> {
+  if (typeof window === "undefined" || logoImage !== undefined) return;
+  try {
+    const img = new window.Image();
+    img.src = "/brand/spindex-wordmark.png";
+    await img.decode();
+    logoImage = img;
+  } catch {
+    logoImage = null; /* fall back to the drawn wordmark */
   }
 }
 
@@ -431,19 +446,27 @@ export function renderShareCard(
   ctx.lineTo(CARD_W - 72, 1196);
   ctx.stroke();
 
-  ctx.font = `900 64px ${display}`;
-  const track = 64 * 0.24;
-  const wordW = measureTracked(ctx, "SPINDEX", track);
-  const startX = CARD_W / 2 - wordW / 2;
-  ctx.fillStyle = THEME.ink;
-  drawTrackedFrom(ctx, "SPINDE", startX, 1278, track);
-  const beylabW = measureTracked(ctx, "SPINDE", track) + track;
-  ctx.fillStyle = THEME.accent;
-  ctx.shadowColor = THEME.accent;
-  ctx.shadowBlur = 34;
-  drawTrackedFrom(ctx, "X", startX + beylabW, 1278, track);
-  drawTrackedFrom(ctx, "X", startX + beylabW, 1278, track);
-  ctx.shadowBlur = 0;
+  if (logoImage) {
+    const logoH = 110;
+    const logoW = logoH * (logoImage.width / logoImage.height);
+    ctx.drawImage(logoImage, CARD_W / 2 - logoW / 2, 1218, logoW, logoH);
+  } else {
+    ctx.font = `900 72px ${display}`;
+    const track = 2;
+    const word = "spindex";
+    let cursor = CARD_W / 2 - measureTracked(ctx, word, track) / 2;
+    const prevAlign = ctx.textAlign;
+    ctx.textAlign = "left";
+    for (const ch of word) {
+      ctx.fillStyle = ch === "p" ? THEME.accent : THEME.ink;
+      ctx.shadowColor = ch === "p" ? THEME.accent : "transparent";
+      ctx.shadowBlur = ch === "p" ? 16 : 0;
+      ctx.fillText(ch, cursor, 1278);
+      cursor += ctx.measureText(ch).width + track;
+    }
+    ctx.shadowBlur = 0;
+    ctx.textAlign = prevAlign;
+  }
 
   ctx.font = `400 27px ${body}`;
   ctx.fillStyle = THEME.inkDim;

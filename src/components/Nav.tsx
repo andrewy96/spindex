@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
@@ -100,13 +101,15 @@ export default function Nav({ locale, dict }: { locale: Locale; dict: Dict }) {
   return (
     <header className="sticky top-0 z-40 border-b border-edge bg-bg/85 backdrop-blur">
       <nav className="mx-auto flex min-h-14 max-w-6xl items-center gap-4 px-4 py-2">
-        <Link href={`/${locale}`} className="flex flex-col items-end leading-none">
-          <span className="flex items-baseline text-2xl font-bold tracking-tight">
-            <span>s</span>
-            <span className="text-accent">p</span>
-            <span>index</span>
-          </span>
-          <span className="mt-1 text-[9px] font-bold tracking-[0.3em] text-ink-dim">MY</span>
+        <Link href={`/${locale}`} className="flex shrink-0 items-center">
+          <Image
+            src="/brand/spindex-wordmark.png"
+            alt="SPINDEX Malaysia"
+            width={1196}
+            height={291}
+            priority
+            className="h-9 w-auto"
+          />
         </Link>
 
         <div className="ml-auto hidden items-center gap-1 sm:flex">

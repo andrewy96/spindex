@@ -208,21 +208,10 @@ def add_feature_chip(draw: ImageDraw.ImageDraw, x: int, y: int, label: str, fill
     draw.text((x + pad_x, y + pad_y - 2), label, font=fnt, fill="#f7fbff")
 
 
-def draw_tracking_text(
-    draw: ImageDraw.ImageDraw,
-    xy: tuple[int, int],
-    text: str,
-    fnt: ImageFont.FreeTypeFont,
-    fill: str,
-    tracking: int,
-    stroke_width: int = 0,
-    stroke_fill: str | None = None,
-) -> int:
-    x, y = xy
-    for char in text:
-        draw.text((x, y), char, font=fnt, fill=fill, stroke_width=stroke_width, stroke_fill=stroke_fill)
-        x += text_size(draw, char, fnt)[0] + tracking
-    return x
+def load_wordmark(height: int) -> Image.Image:
+    wm = Image.open(ROOT / "public/brand/spindex-wordmark.png").convert("RGBA")
+    ratio = height / wm.height
+    return wm.resize((round(wm.width * ratio), height), Image.Resampling.LANCZOS)
 
 
 def draw_wrapped(
@@ -257,17 +246,8 @@ def build_poster() -> Image.Image:
 
     draw = ImageDraw.Draw(img, "RGBA")
 
-    brand_font = font(FONT_DISPLAY, 108)
     brand_y = 132
-    x_after = draw_tracking_text(draw, (BLEED_SAFE, brand_y), "SPINDE", brand_font, "#f7fbff", tracking=14)
-    draw.text(
-        (x_after + 10, brand_y),
-        "X",
-        font=brand_font,
-        fill="#00e58f",
-        stroke_width=2,
-        stroke_fill=(0, 229, 143, 100),
-    )
+    paste_alpha(img, load_wordmark(150), (BLEED_SAFE, brand_y))
 
     kicker = "EXTREME GEAR SPORTS"
     draw.text((BLEED_SAFE + 8, 356), kicker, font=font(FONT_BOLD, 44), fill="#00e58f")

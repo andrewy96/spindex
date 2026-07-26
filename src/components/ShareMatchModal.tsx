@@ -8,6 +8,7 @@ import {
   ShareCardData,
   canvasToPngFile,
   ensureFonts,
+  ensureLogoImage,
   renderShareCard,
   shareSampleText,
 } from "@/lib/shareCard";
@@ -58,7 +59,7 @@ export default function ShareMatchModal({
     if (!canvas) return;
     setFile(null);
     (async () => {
-      await ensureFonts(shareSampleText(card));
+      await Promise.all([ensureFonts(shareSampleText(card)), ensureLogoImage()]);
       if (cancelled) return;
       renderShareCard(canvas, card, seed);
       try {
