@@ -48,6 +48,7 @@ export default function TournamentDetailClient({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [partnerRoster, setPartnerRoster] = useState<{ id: string; name: string }[]>([]);
 
   const [name, setName] = useState("");
   const [city, setCity] = useState("Kuala Lumpur");
@@ -102,6 +103,34 @@ export default function TournamentDetailClient({
   useEffect(() => {
     load();
   }, [load]);
+
+  // Partner tournaments track their roster in partner_battles (walk-in names,
+  // not accounts), so mirror that count/lineup into the header — kept live.
+  useEffect(() => {
+    if (!supabase || item?.format !== "partner") return;
+    let active = true;
+    const read = (state: { players?: { id: string; name: string }[] } | null) => {
+      if (active) setPartnerRoster(Array.isArray(state?.players) ? state!.players! : []);
+    };
+    supabase
+      .from("partner_battles")
+      .select("state")
+      .eq("tournament_id", id)
+      .maybeSingle()
+      .then(({ data }) => read((data?.state as { players?: { id: string; name: string }[] }) ?? null));
+    const channel = supabase
+      .channel(`partner_battles_hdr:${id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "partner_battles", filter: `tournament_id=eq.${id}` },
+        (payload) => read((payload.new as { state?: { players?: { id: string; name: string }[] } } | null)?.state ?? null)
+      )
+      .subscribe();
+    return () => {
+      active = false;
+      supabase?.removeChannel(channel);
+    };
+  }, [id, item?.format]);
 
   if (!enabled) {
     return <div className="panel border-accent-2/40 p-5 text-sm text-ink-dim">{dict.auth.notConfigured}</div>;
@@ -266,11 +295,14 @@ export default function TournamentDetailClient({
             {item.note && <p className="mt-4 text-sm leading-relaxed text-ink-dim">{item.note}</p>}
             <div className="mt-4 flex flex-wrap gap-1.5 text-[10px] font-semibold">
               <span className="rounded bg-panel px-2 py-0.5 text-accent">
-                {t.hostJoined}: {joined.length}/{item.max_players}
+                {t.hostJoined}: {item.format === "partner" ? partnerRoster.length : joined.length}/
+                {item.max_players}
               </span>
-              <span className="rounded bg-panel px-2 py-0.5 text-ink-dim">
-                {t.hostWaitlisted}: {waitlisted.length}
-              </span>
+              {item.format !== "partner" && (
+                <span className="rounded bg-panel px-2 py-0.5 text-ink-dim">
+                  {t.hostWaitlisted}: {waitlisted.length}
+                </span>
+              )}
               {mine && (
                 <span className="rounded bg-accent/10 px-2 py-0.5 text-accent">
                   {mine.status === "joined" ? t.hostYouJoined : t.hostYouWaitlisted}
@@ -300,7 +332,19 @@ export default function TournamentDetailClient({
 
           <div className="panel p-5">
             <div className="mb-3 font-display text-sm font-bold tracking-wider text-ink-dim">{t.lineup}</div>
-            {joined.length === 0 ? (
+            {item.format === "partner" ? (
+              partnerRoster.length === 0 ? (
+                <p className="text-sm text-ink-dim">{t.noPlayers}</p>
+              ) : (
+                <ol className="space-y-1 text-sm text-ink-dim">
+                  {partnerRoster.map((p, i) => (
+                    <li key={p.id} className="rounded bg-panel px-2 py-1">
+                      #{i + 1} {p.name}
+                    </li>
+                  ))}
+                </ol>
+              )
+            ) : joined.length === 0 ? (
               <p className="text-sm text-ink-dim">{t.noPlayers}</p>
             ) : (
               <ol className="space-y-1 text-sm text-ink-dim">
@@ -314,7 +358,7 @@ export default function TournamentDetailClient({
                 ))}
               </ol>
             )}
-            {waitlisted.length > 0 && (
+            {item.format !== "partner" && waitlisted.length > 0 && (
               <>
                 <div className="mb-2 mt-4 font-display text-xs font-bold tracking-wider text-ink-dim">{t.hostWaitlisted}</div>
                 <ol className="space-y-1 text-xs text-ink-dim">
