@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth";
 import {
   BEYLIVE_MATCH_SELECT,
   BeyliveMatch,
+  BeyliveTeam,
   CommunityTournament,
   supabase,
   TournamentPlayer,
@@ -82,6 +83,16 @@ function matchStageLabel(match: BeyliveMatch, teamMode: boolean) {
   return `League R${match.round_no}`;
 }
 
+function matchTeams(matches: BeyliveMatch[]) {
+  const map = new Map<string, BeyliveTeam>();
+  for (const match of matches) {
+    for (const player of match.players ?? []) {
+      if (player.team) map.set(player.team.id, player.team);
+    }
+  }
+  return [...map.values()];
+}
+
 export default function BeyliveControlClient({ id, locale }: { id: string; locale: Locale }) {
   const { enabled, profile } = useAuth();
   const [tournament, setTournament] = useState<CommunityTournament | null>(null);
@@ -135,13 +146,17 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     () => findTournamentPlayerByScan(players, scanValue),
     [players, scanValue],
   );
-  const teamMode = isBeyliveTeamTournament(tournament) && (tournament?.teams?.length ?? 0) > 0;
+  const teamMode = isBeyliveTeamTournament(tournament);
   const teams = useMemo(
-    () =>
-      [...(tournament?.teams ?? [])].sort(
+    () => {
+      const byId = new Map<string, BeyliveTeam>();
+      for (const team of tournament?.teams ?? []) byId.set(team.id, team);
+      for (const team of matchTeams(matches)) byId.set(team.id, team);
+      return [...byId.values()].sort(
         (a, b) => (a.seed ?? a.team_no) - (b.seed ?? b.team_no) || a.team_no - b.team_no,
-      ),
-    [tournament],
+      );
+    },
+    [matches, tournament],
   );
   const scannedTeam = useMemo(
     () => findBeyliveTeamByScan(teams, scanValue),
@@ -253,7 +268,11 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                   <div className="font-mono text-xs text-ink-dim">{beylivePlayerCode(scannedPlayer.profile)}</div>
                 </div>
               ) : (
-                <p className="mt-2 text-sm text-atk">No {teamMode ? "team" : "player"} found for {scanValue}</p>
+                <p className="mt-2 text-sm text-atk">
+                  {teamMode && teams.length === 0
+                    ? "Start BEYLIVE first to create T01, T02 team IDs from joined players."
+                    : `No ${teamMode ? "team" : "player"} found for ${scanValue}`}
+                </p>
               )}
             </div>
           )}
@@ -262,22 +281,28 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
               {teamMode ? "Team IDs and QR" : "Player IDs and QR"}
             </div>
             <div className="grid gap-2">
-              {teamMode
-                ? teams.map((team) => (
+              {teamMode && teams.length === 0 ? (
+                <p className="rounded-md border border-edge bg-bg px-3 py-4 text-sm text-ink-dim">
+                  Start BEYLIVE to create T01, T02 team IDs.
+                </p>
+              ) : teamMode ? (
+                teams.map((team) => (
                     <TeamRow
                       key={team.id}
                       team={team}
                       active={scannedTeam?.id === team.id}
                     />
                   ))
-                : players.map((player, index) => (
+              ) : (
+                players.map((player, index) => (
                     <PlayerRow
                       key={player.user_id}
                       player={player}
                       index={index}
                       active={scannedPlayer?.user_id === player.user_id}
                     />
-                  ))}
+                  ))
+              )}
             </div>
           </div>
         </aside>
