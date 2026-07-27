@@ -31,6 +31,28 @@ import { profileDisplayName } from "@/lib/profileName";
 import BeyliveScanner from "./BeyliveScanner";
 import QrCodeBadge from "./QrCodeBadge";
 
+interface LocalPartnerPlayer {
+  id: string;
+  name: string;
+}
+
+interface LocalPartnerTeam {
+  id: string;
+  members: string[];
+}
+
+interface LocalPartnerState {
+  players?: LocalPartnerPlayer[];
+  teams?: LocalPartnerTeam[];
+}
+
+interface LocalDisplayTeam {
+  id: string;
+  code: string;
+  name: string;
+  members: string[];
+}
+
 function PlayerRow({
   player,
   index,
@@ -49,6 +71,27 @@ function PlayerRow({
           <div className="font-mono text-[11px] text-ink-dim">{beylivePlayerCode(player.profile)}</div>
         </div>
         <QrCodeBadge value={beyliveQrValue(player.profile)} label="BEYLIVE" size={72} />
+      </div>
+    </div>
+  );
+}
+
+function LocalTeamRow({
+  team,
+  active,
+}: {
+  team: LocalDisplayTeam;
+  active: boolean;
+}) {
+  return (
+    <div className={`rounded-md border p-3 ${active ? "border-accent bg-accent/10" : "border-edge bg-panel"}`}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-display text-xs font-bold text-accent">{team.code}</div>
+          <div className="truncate text-sm font-semibold">{team.name}</div>
+          <div className="truncate text-[11px] text-ink-dim">{team.members.join(" / ")}</div>
+        </div>
+        <QrCodeBadge value={team.code} label="BEYLIVE" size={72} />
       </div>
     </div>
   );
@@ -93,6 +136,32 @@ function matchTeams(matches: BeyliveMatch[]) {
   return [...map.values()];
 }
 
+function localPartnerTeams(state: LocalPartnerState | null): LocalDisplayTeam[] {
+  if (!state?.teams?.length) return [];
+  const names = new Map((state.players ?? []).map((player) => [player.id, player.name]));
+  return state.teams.map((team, index) => {
+    const members = team.members.map((memberId) => names.get(memberId) ?? memberId);
+    const code = `T${String(index + 1).padStart(2, "0")}`;
+    return {
+      id: team.id,
+      code,
+      name: members.join(" / ") || `Team ${String(index + 1).padStart(2, "0")}`,
+      members,
+    };
+  });
+}
+
+function findLocalTeamByScan(teams: LocalDisplayTeam[], raw: string): LocalDisplayTeam | null {
+  const value = raw.trim().replace(/^#/, "").toLowerCase();
+  if (!value) return null;
+  return (
+    teams.find((team) => {
+      const code = team.code.toLowerCase();
+      return team.id.toLowerCase() === value || code === value || code.replace(/^t/, "") === value;
+    }) ?? null
+  );
+}
+
 export default function BeyliveControlClient({ id, locale }: { id: string; locale: Locale }) {
   const { enabled, profile } = useAuth();
   const [tournament, setTournament] = useState<CommunityTournament | null>(null);
@@ -101,6 +170,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
   const [busy, setBusy] = useState<"start" | "advance" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scanValue, setScanValue] = useState("");
+  const [localPartnerState, setLocalPartnerState] = useState<LocalPartnerState | null>(null);
 
   const load = useCallback(async () => {
     if (!supabase) return;
@@ -121,6 +191,15 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(`spindex.partner-battle.${id}`);
+      setLocalPartnerState(raw ? (JSON.parse(raw) as LocalPartnerState) : null);
+    } catch {
+      setLocalPartnerState(null);
+    }
+  }, [id]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -162,10 +241,15 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     () => findBeyliveTeamByScan(teams, scanValue),
     [teams, scanValue],
   );
+  const localTeams = useMemo(() => localPartnerTeams(localPartnerState), [localPartnerState]);
+  const scannedLocalTeam = useMemo(
+    () => findLocalTeamByScan(localTeams, scanValue),
+    [localTeams, scanValue],
+  );
   const isHost = !!profile && profile.id === tournament?.host;
   const currentRound = tournament?.current_round ?? 1;
   const currentRoundMatches = matches.filter((match) => match.round_no === currentRound);
-  const scanFound = teamMode ? !!scannedTeam : !!scannedPlayer;
+  const scanFound = teamMode ? !!scannedTeam || !!scannedLocalTeam : !!scannedPlayer;
   const canAdvance =
     currentRoundMatches.length > 0 &&
     currentRoundMatches.every((match) => match.status === "completed" || match.status === "cancelled");
@@ -259,6 +343,12 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                   <div className="font-semibold">{scannedTeam.name}</div>
                   <div className="text-xs text-ink-dim">{beyliveTeamMembers(scannedTeam).join(" / ")}</div>
                 </div>
+              ) : teamMode && scannedLocalTeam ? (
+                <div className="mt-2">
+                  <div className="font-display text-lg font-black text-accent">{scannedLocalTeam.code}</div>
+                  <div className="font-semibold">{scannedLocalTeam.name}</div>
+                  <div className="text-xs text-ink-dim">Local Partner Battle team</div>
+                </div>
               ) : !teamMode && scannedPlayer ? (
                 <div className="mt-2">
                   <div className="font-display text-lg font-black text-accent">
@@ -270,7 +360,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
               ) : (
                 <p className="mt-2 text-sm text-atk">
                   {teamMode && teams.length === 0
-                    ? "Start BEYLIVE first to create T01, T02 team IDs from joined players."
+                    ? "No BEYLIVE database team found yet. Local Partner Battle teams can be shown here, but database scoring needs joined players and Start BEYLIVE."
                     : `No ${teamMode ? "team" : "player"} found for ${scanValue}`}
                 </p>
               )}
@@ -281,9 +371,17 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
               {teamMode ? "Team IDs and QR" : "Player IDs and QR"}
             </div>
             <div className="grid gap-2">
-              {teamMode && teams.length === 0 ? (
+              {teamMode && teams.length === 0 && localTeams.length > 0 ? (
+                localTeams.map((team) => (
+                  <LocalTeamRow
+                    key={team.id}
+                    team={team}
+                    active={scannedLocalTeam?.id === team.id}
+                  />
+                ))
+              ) : teamMode && teams.length === 0 ? (
                 <p className="rounded-md border border-edge bg-bg px-3 py-4 text-sm text-ink-dim">
-                  Start BEYLIVE to create T01, T02 team IDs.
+                  Start BEYLIVE to create database team IDs, or run the Partner Battle draw on this browser first.
                 </p>
               ) : teamMode ? (
                 teams.map((team) => (
