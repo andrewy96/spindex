@@ -407,6 +407,8 @@
     "hostFormatFreeForAllDesc": "Many players per match, winners advance.",
     "hostFormatLeaderboard": "Leaderboard",
     "hostFormatLeaderboardDesc": "Rank players by points or results.",
+    "hostFormatPartner": "Partner battle",
+    "hostFormatPartnerDesc": "Random 2-blader teams drawn on a wheel, Swiss rounds, top 2 to the final.",
     "hostNote": "Note",
     "hostError": "Something went wrong. Try again.",
     "hostEmpty": "No community tournaments yet.",

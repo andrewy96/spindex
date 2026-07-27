@@ -11,6 +11,7 @@ import {
   TournamentFormat,
 } from "@/lib/supabase";
 import { profileDisplayName } from "@/lib/profileName";
+import PartnerBattleRunner from "@/components/PartnerBattleRunner";
 
 const inputCls =
   "w-full rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent";
@@ -65,6 +66,7 @@ export default function TournamentDetailClient({
         { key: "swiss", label: t.hostFormatSwiss },
         { key: "free_for_all", label: t.hostFormatFreeForAll },
         { key: "leaderboard", label: t.hostFormatLeaderboard },
+        { key: "partner", label: t.hostFormatPartner },
       ] as const,
     [t]
   );
@@ -238,6 +240,7 @@ export default function TournamentDetailClient({
           </div>
         </form>
       ) : (
+        <>
         <div className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr]">
           <div className="panel p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -314,6 +317,18 @@ export default function TournamentDetailClient({
             )}
           </div>
         </div>
+
+        {item.format === "partner" && (
+          <div className="mt-6">
+            <PartnerBattleRunner
+              locale={locale}
+              storageKey={`spindex.partner-battle.${item.id}`}
+              seedNames={joined.map((p) => profileDisplayName(p.profile))}
+              canManage={isHost}
+            />
+          </div>
+        )}
+        </>
       )}
     </div>
   );

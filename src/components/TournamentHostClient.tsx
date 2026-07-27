@@ -50,6 +50,7 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
         { key: "swiss", label: t.hostFormatSwiss, desc: t.hostFormatSwissDesc },
         { key: "free_for_all", label: t.hostFormatFreeForAll, desc: t.hostFormatFreeForAllDesc },
         { key: "leaderboard", label: t.hostFormatLeaderboard, desc: t.hostFormatLeaderboardDesc },
+        { key: "partner", label: t.hostFormatPartner, desc: t.hostFormatPartnerDesc },
       ] as const,
     [t]
   );

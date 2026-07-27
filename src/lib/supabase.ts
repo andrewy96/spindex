@@ -112,7 +112,8 @@ export type TournamentFormat =
   | "round_robin"
   | "swiss"
   | "free_for_all"
-  | "leaderboard";
+  | "leaderboard"
+  | "partner";
 
 export interface TournamentPlayer {
   tournament_id: string;

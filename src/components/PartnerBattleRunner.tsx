@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { Locale } from "@/i18n";
 import SpinWheel from "@/components/SpinWheel";
 import {
@@ -19,24 +18,6 @@ import {
   uid,
 } from "@/lib/partnerBattle";
 
-/** Registered walk-ins for the OTG Penang open-bey partner cup. */
-const PRESET_NAMES = [
-  "Han",
-  "CH",
-  "Eric",
-  "Kai Ping",
-  "Andy",
-  "Wayne",
-  "Norman",
-  "Yun",
-  "Alwin",
-  "Yan",
-  "Vincent Yeoh",
-  "Wylern",
-];
-
-const STORAGE_KEY = "spindex.partner-battle.v1";
-
 type Phase = "roster" | "draw" | "battle";
 
 interface PersistState {
@@ -50,46 +31,32 @@ interface PersistState {
 
 const L = {
   en: {
-    title: "Partner Battle",
-    eventName: "OTG Penang · Open Bey Partner Cup",
-    meta: "OTG Penang · Mon 27 Jul 2026, 8:00 PM · RM12 per person",
-    rulesTitle: "Rules",
-    rules: [
-      "Random partner — drawn on the wheel during registration",
-      "3 Beys per team",
-      "First to 7 points wins",
-      "Metal Bit banned",
-      "Swiss battle — top 2 teams enter the final",
-      "1 stadium · 1 judge",
-      "Champion receives a cash prize",
-    ],
-    back: "Back to tournaments",
-    reset: "Reset event",
-    resetConfirm: "Reset the whole event? Players, teams and scores will be cleared.",
-    // roster
-    rosterTitle: "Players",
+    heading: "Partner Battle",
+    intro: "Random 2-blader teams · first to 7 · Swiss, top 2 to the final.",
+    viewerNote: "The host runs the partner draw and scoring live at the venue.",
+    reset: "Reset draw",
+    resetConfirm: "Reset the partner draw? Teams and scores will be cleared.",
+    rosterTitle: "Bladers",
     rosterHint: "Add or remove bladers before the partner draw.",
     addPlaceholder: "Add blader name",
     add: "Add",
-    loadPreset: "Load OTG list",
+    loadLineup: "Load from lineup",
     clearAll: "Clear all",
     remove: "Remove",
     playerCount: "{n} bladers",
     startDraw: "Start partner draw",
     needFour: "Add at least 4 bladers to run a partner draw",
-    oddNote: "Odd number of bladers — the last team will have 3 members.",
-    // draw
+    oddNote: "Odd number — the last team will have 3 members.",
     drawTitle: "Partner Draw",
     drawHint: "Spin to draw each blader. Every two draws forms a team.",
     spin: "Spin",
     undrawn: "In the wheel",
-    forming: "Forming team",
+    forming: "forming",
     teamsFormed: "Teams",
     drawDone: "All partners drawn",
     startBattle: "Start Swiss battle",
     redraw: "Redraw partners",
     autoLast: "Auto-draw the last two",
-    // battle
     battleTitle: "Swiss Battle",
     swissOf: "Swiss · {n} rounds",
     round: "Round {n}",
@@ -107,44 +74,33 @@ const L = {
     tableRecord: "W–L",
     tableDiff: "Diff",
     tablePts: "Pts",
-    top2: "TOP 2",
+    top2: "Top 2 advance to the final",
     champion: "Champion",
-    inProgress: "In progress",
     completed: "Completed",
+    inProgress: "In progress",
   },
   zh: {
-    title: "双人组队赛",
-    eventName: "OTG 槟城 · 开放战陀组队杯",
-    meta: "OTG 槟城 · 2026年7月27日 周一 20:00 · 每人 RM12",
-    rulesTitle: "赛规",
-    rules: [
-      "随机搭档 — 报到时转盘抽取",
-      "每队 3 颗战陀",
-      "先得 7 分者胜",
-      "禁用金属轴 (Metal Bit)",
-      "瑞士轮 — 前 2 名进入决赛",
-      "1 个战盘 · 1 名裁判",
-      "冠军获得现金奖励",
-    ],
-    back: "返回赛事",
-    reset: "重置赛事",
-    resetConfirm: "确定重置整个赛事？玩家、队伍和比分都会清空。",
+    heading: "双人组队赛",
+    intro: "随机 2 人组队 · 先得 7 分 · 瑞士轮，前 2 名进决赛。",
+    viewerNote: "由主办方在现场进行抽签与计分。",
+    reset: "重置抽签",
+    resetConfirm: "确定重置搭档抽签？队伍和比分将被清空。",
     rosterTitle: "玩家",
     rosterHint: "抽签前可添加或移除玩家。",
     addPlaceholder: "输入玩家名字",
     add: "添加",
-    loadPreset: "载入 OTG 名单",
+    loadLineup: "从名单载入",
     clearAll: "全部清除",
     remove: "移除",
     playerCount: "{n} 名玩家",
     startDraw: "开始搭档抽签",
     needFour: "至少需要 4 名玩家才能抽搭档",
-    oddNote: "玩家人数为奇数 — 最后一队将有 3 人。",
+    oddNote: "人数为奇数 — 最后一队将有 3 人。",
     drawTitle: "搭档抽签",
     drawHint: "转动转盘抽取玩家，每抽两人组成一队。",
     spin: "转动",
     undrawn: "转盘中",
-    forming: "正在组队",
+    forming: "组队中",
     teamsFormed: "队伍",
     drawDone: "全部搭档已抽出",
     startBattle: "开始瑞士轮",
@@ -167,14 +123,31 @@ const L = {
     tableRecord: "胜-负",
     tableDiff: "净胜分",
     tablePts: "得分",
-    top2: "前二",
+    top2: "前 2 名进入决赛",
     champion: "冠军",
-    inProgress: "进行中",
     completed: "已结束",
+    inProgress: "进行中",
   },
 };
 
-export default function PartnerBattleClient({ locale }: { locale: Locale }) {
+/**
+ * Embeddable partner-battle organizer for a community tournament of format
+ * "partner". State is host-local (localStorage keyed by tournament id) — a
+ * single judge runs the draw and scoring on one device, matching the
+ * one-stadium/one-judge event setup. Walk-ins without accounts are added by
+ * name; the lineup of registered joiners is offered as a seed.
+ */
+export default function PartnerBattleRunner({
+  locale,
+  storageKey,
+  seedNames,
+  canManage,
+}: {
+  locale: Locale;
+  storageKey: string;
+  seedNames: string[];
+  canManage: boolean;
+}) {
   const t = L[locale] ?? L.en;
 
   const [phase, setPhase] = useState<Phase>("roster");
@@ -187,10 +160,10 @@ export default function PartnerBattleClient({ locale }: { locale: Locale }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
-  // Restore any in-progress event from localStorage.
+  // Restore in-progress state, else seed the roster from the joined lineup.
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(storageKey);
       if (raw) {
         const s = JSON.parse(raw) as PersistState;
         setPhase(s.phase ?? "roster");
@@ -199,23 +172,26 @@ export default function PartnerBattleClient({ locale }: { locale: Locale }) {
         setTeams(s.teams ?? []);
         setMatches(s.matches ?? []);
         setRound(s.round ?? 1);
+      } else {
+        setPlayers(seedNames.map((name) => ({ id: uid("p"), name })));
       }
     } catch {
       /* ignore corrupt state */
     }
     setLoaded(true);
-  }, []);
+    // Seed only once per storage key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey]);
 
-  // Persist on every change once the initial load is done.
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || !canManage) return;
     const s: PersistState = { phase, players, draw, teams, matches, round };
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+      localStorage.setItem(storageKey, JSON.stringify(s));
     } catch {
-      /* storage full / unavailable — non-fatal */
+      /* storage unavailable — non-fatal */
     }
-  }, [loaded, phase, players, draw, teams, matches, round]);
+  }, [loaded, canManage, storageKey, phase, players, draw, teams, matches, round]);
 
   const nameOf = useMemo(() => {
     const map = new Map(players.map((p) => [p.id, p.name]));
@@ -233,23 +209,24 @@ export default function PartnerBattleClient({ locale }: { locale: Locale }) {
     () => (phase === "battle" ? champion(teamIds, matches, round) : null),
     [phase, teamIds, matches, round]
   );
+  const undrawn = useMemo(() => players.filter((p) => !draw.includes(p.id)), [players, draw]);
+  const drawnTeams = useMemo(() => {
+    const out: Team[] = [];
+    for (let i = 0; i < draw.length; i += 2) {
+      out.push({ id: `preview-${i}`, members: draw.slice(i, i + 2) });
+    }
+    return out;
+  }, [draw]);
 
-  const undrawn = useMemo(
-    () => players.filter((p) => !draw.includes(p.id)),
-    [players, draw]
-  );
-
-  // ---- roster actions ----
+  // ---- roster ----
   const addPlayer = (name: string) => {
     const clean = name.trim();
     if (!clean) return;
     setPlayers((prev) => [...prev, { id: uid("p"), name: clean }]);
   };
   const removePlayer = (id: string) => setPlayers((prev) => prev.filter((p) => p.id !== id));
-  const loadPreset = () =>
-    setPlayers(PRESET_NAMES.map((name) => ({ id: uid("p"), name })));
+  const loadLineup = () => setPlayers(seedNames.map((name) => ({ id: uid("p"), name })));
   const clearAll = () => setPlayers([]);
-
   const startDraw = () => {
     setDraw([]);
     setTeams([]);
@@ -258,7 +235,7 @@ export default function PartnerBattleClient({ locale }: { locale: Locale }) {
     setPhase("draw");
   };
 
-  // ---- draw actions ----
+  // ---- draw ----
   const onWheelResult = (id: string) => setDraw((prev) => [...prev, id]);
   const autoLastTwo = () => setDraw((prev) => [...prev, ...undrawn.map((p) => p.id)]);
   const redraw = () => {
@@ -268,33 +245,19 @@ export default function PartnerBattleClient({ locale }: { locale: Locale }) {
   const startBattle = () => {
     const formed = teamsFromDraw(draw);
     setTeams(formed);
-    const ids = formed.map((tm) => tm.id);
-    setMatches(firstSwissRound(ids));
+    setMatches(firstSwissRound(formed.map((tm) => tm.id)));
     setRound(1);
     setPhase("battle");
   };
 
-  // Live preview of the forming teams — simple pairs, no odd-fold, so a
-  // half-picked team reads as "forming" rather than a premature trio.
-  const drawnTeams = useMemo(() => {
-    const out: Team[] = [];
-    for (let i = 0; i < draw.length; i += 2) {
-      out.push({ id: `preview-${i}`, members: draw.slice(i, i + 2) });
-    }
-    return out;
-  }, [draw]);
-
-  // ---- battle actions ----
+  // ---- battle ----
   const report = (matchId: string, scores: Record<string, number>) => {
     setMatches((prev) => {
       const match = prev.find((m) => m.id === matchId);
       const winnerId = match ? scoreWinner(match.teams, scores) : null;
       if (!match || winnerId === null) return prev;
       const next = prev.map((m) => (m.id === matchId ? { ...m, winner: winnerId, scores } : m));
-
-      // Correcting an earlier round shouldn't regenerate later rounds.
       if (next.some((m) => m.round > match.round)) return next;
-
       const current = next.filter((m) => m.round === match.round);
       if (current.every((m) => m.winner !== null)) {
         const upcoming = nextRound(teamIds, next, match.round);
@@ -316,78 +279,161 @@ export default function PartnerBattleClient({ locale }: { locale: Locale }) {
     setMatches([]);
     setRound(1);
     setEditingId(null);
+    setPlayers(seedNames.map((name) => ({ id: uid("p"), name })));
   };
 
   const maxRound = matches.reduce((m, x) => Math.max(m, x.round), 1);
   const roundsList = Array.from({ length: maxRound }, (_, i) => i + 1);
+  const odd = players.length % 2 === 1;
   const statusLabel = champ ? t.completed : phase === "battle" ? t.inProgress : "";
 
   if (!loaded) return null;
 
-  return (
-    <div>
-      <div className="mb-5 flex flex-wrap items-center gap-2">
-        <Link
-          href={`/${locale}/tournaments`}
-          className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink"
-        >
-          {t.back}
-        </Link>
-        <button
-          onClick={reset}
-          className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-accent-2 transition hover:border-accent-2/60"
-        >
-          {t.reset}
-        </button>
-      </div>
-
-      {/* header */}
-      <div className="panel mb-5 p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="font-display text-2xl font-bold tracking-wide">{t.title}</h1>
-            <p className="mt-1 font-semibold text-accent">{t.eventName}</p>
-            <p className="mt-0.5 text-sm text-ink-dim">{t.meta}</p>
-          </div>
+  // Non-host viewers only see the summary — the live state is host-local.
+  if (!canManage) {
+    return (
+      <div className="panel p-5">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-display text-lg font-bold tracking-wide">{t.heading}</h2>
           {statusLabel && (
             <span className="rounded-full bg-accent-2/10 px-3 py-1 text-xs font-semibold text-accent-2">
               {statusLabel}
             </span>
           )}
         </div>
-        <div className="mt-4">
-          <div className="mb-1 font-display text-xs font-bold tracking-wider text-ink-dim">
-            {t.rulesTitle}
+        <p className="mt-1 text-sm text-ink-dim">{t.intro}</p>
+        <p className="mt-3 rounded-md border border-accent-2/30 bg-accent-2/5 px-3 py-2 text-xs text-accent-2">
+          {t.viewerNote}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="panel mb-4 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="font-display text-lg font-bold tracking-wide">{t.heading}</h2>
+            <p className="mt-1 text-sm text-ink-dim">{t.intro}</p>
           </div>
-          <ul className="grid gap-1 text-sm text-ink-dim sm:grid-cols-2">
-            {t.rules.map((r) => (
-              <li key={r} className="flex gap-2">
-                <span className="text-accent">◆</span>
-                {r}
-              </li>
-            ))}
-          </ul>
+          <div className="flex items-center gap-2">
+            {statusLabel && (
+              <span className="rounded-full bg-accent-2/10 px-3 py-1 text-xs font-semibold text-accent-2">
+                {statusLabel}
+              </span>
+            )}
+            {phase !== "roster" && (
+              <button
+                onClick={reset}
+                className="clip-x border border-edge bg-panel-2 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink"
+              >
+                {t.reset}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
       {phase === "roster" && (
-        <RosterPanel
-          t={t}
-          players={players}
-          newName={newName}
-          setNewName={setNewName}
-          addPlayer={addPlayer}
-          removePlayer={removePlayer}
-          loadPreset={loadPreset}
-          clearAll={clearAll}
-          startDraw={startDraw}
-        />
+        <div className="panel p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="font-display text-sm font-bold tracking-wider">{t.rosterTitle}</h3>
+              <p className="mt-1 text-sm text-ink-dim">{t.rosterHint}</p>
+            </div>
+            <div className="flex gap-2">
+              {seedNames.length > 0 && (
+                <button
+                  onClick={loadLineup}
+                  className="clip-x border border-edge bg-panel-2 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-accent-2 transition hover:border-accent-2/60"
+                >
+                  {t.loadLineup}
+                </button>
+              )}
+              {players.length > 0 && (
+                <button
+                  onClick={clearAll}
+                  className="clip-x border border-edge bg-panel-2 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink"
+                >
+                  {t.clearAll}
+                </button>
+              )}
+            </div>
+          </div>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              addPlayer(newName);
+              setNewName("");
+            }}
+            className="mt-4 flex gap-2"
+          >
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder={t.addPlaceholder}
+              maxLength={40}
+              className="flex-1 rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent"
+            />
+            <button
+              type="submit"
+              className="clip-x bg-accent px-5 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110"
+            >
+              {t.add}
+            </button>
+          </form>
+
+          <div className="mt-4 flex items-center justify-between">
+            <span className="font-display text-xs font-bold tracking-wider text-ink-dim">
+              {t.playerCount.replace("{n}", String(players.length))}
+            </span>
+            {odd && players.length >= 4 && <span className="text-xs text-bal">{t.oddNote}</span>}
+          </div>
+
+          {players.length > 0 && (
+            <ol className="mt-2 grid gap-1.5 sm:grid-cols-2">
+              {players.map((p, i) => (
+                <li
+                  key={p.id}
+                  className="flex items-center justify-between rounded-md border border-edge bg-panel px-3 py-2 text-sm"
+                >
+                  <span>
+                    <span className="font-display text-xs font-bold text-accent-2">
+                      {String(i + 1).padStart(2, "0")}
+                    </span>{" "}
+                    <span className="text-ink">{p.name}</span>
+                  </span>
+                  <button
+                    onClick={() => removePlayer(p.id)}
+                    aria-label={t.remove}
+                    className="rounded px-1.5 text-ink-dim transition hover:text-atk"
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ol>
+          )}
+
+          <div className="mt-5">
+            <button
+              onClick={startDraw}
+              disabled={players.length < 4}
+              className="clip-x bg-accent px-6 py-3 font-display text-sm font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+            >
+              {t.startDraw}
+            </button>
+            {players.length < 4 && <p className="mt-2 text-xs text-ink-dim">{t.needFour}</p>}
+          </div>
+        </div>
       )}
 
       {phase === "draw" && (
         <div className="grid gap-4 lg:grid-cols-[1fr_0.8fr]">
           <div className="panel p-5">
-            <h2 className="font-display text-lg font-bold tracking-wide">{t.drawTitle}</h2>
+            <h3 className="font-display text-sm font-bold tracking-wider">{t.drawTitle}</h3>
             <p className="mt-1 text-sm text-ink-dim">{t.drawHint}</p>
             <div className="mt-6 flex flex-col items-center">
               {undrawn.length > 0 ? (
@@ -447,21 +493,15 @@ export default function PartnerBattleClient({ locale }: { locale: Locale }) {
                       forming ? "border-accent/50 bg-accent/5" : "border-edge bg-panel"
                     }`}
                   >
-                    <span className="font-display text-xs font-bold text-accent-2">
-                      #{i + 1}
-                    </span>{" "}
+                    <span className="font-display text-xs font-bold text-accent-2">#{i + 1}</span>{" "}
                     <span className="text-ink">
                       {tm.members.map(nameOf).join(" & ")}
-                      {forming && (
-                        <span className="ml-2 text-xs text-ink-dim">({t.forming}…)</span>
-                      )}
+                      {forming && <span className="ml-2 text-xs text-ink-dim">({t.forming}…)</span>}
                     </span>
                   </li>
                 );
               })}
-              {drawnTeams.length === 0 && (
-                <li className="text-sm text-ink-dim">—</li>
-              )}
+              {drawnTeams.length === 0 && <li className="text-sm text-ink-dim">—</li>}
             </ol>
           </div>
         </div>
@@ -472,7 +512,7 @@ export default function PartnerBattleClient({ locale }: { locale: Locale }) {
           <div>
             <div className="panel p-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="font-display text-lg font-bold tracking-wide">{t.battleTitle}</h2>
+                <h3 className="font-display text-sm font-bold tracking-wider">{t.battleTitle}</h3>
                 <span className="rounded bg-panel px-2 py-0.5 text-[10px] font-semibold text-ink-dim">
                   {t.swissOf.replace("{n}", String(swissRoundCount(teamIds.length)))}
                 </span>
@@ -501,7 +541,8 @@ export default function PartnerBattleClient({ locale }: { locale: Locale }) {
                       <div key={m.id} className="rounded-md border border-edge bg-panel p-3">
                         {m.teams.length === 1 ? (
                           <p className="text-sm text-ink-dim">
-                            {teamLabel(m.teams[0])} — <span className="text-accent-2">{t.bye}</span>
+                            {teamLabel(m.teams[0])} —{" "}
+                            <span className="text-accent-2">{t.bye}</span>
                           </p>
                         ) : m.winner !== null && editingId !== m.id ? (
                           <div>
@@ -597,124 +638,6 @@ export default function PartnerBattleClient({ locale }: { locale: Locale }) {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function RosterPanel({
-  t,
-  players,
-  newName,
-  setNewName,
-  addPlayer,
-  removePlayer,
-  loadPreset,
-  clearAll,
-  startDraw,
-}: {
-  t: (typeof L)["en"];
-  players: Player[];
-  newName: string;
-  setNewName: (v: string) => void;
-  addPlayer: (name: string) => void;
-  removePlayer: (id: string) => void;
-  loadPreset: () => void;
-  clearAll: () => void;
-  startDraw: () => void;
-}) {
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    addPlayer(newName);
-    setNewName("");
-  };
-  const odd = players.length % 2 === 1;
-  return (
-    <div className="panel p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="font-display text-lg font-bold tracking-wide">{t.rosterTitle}</h2>
-          <p className="mt-1 text-sm text-ink-dim">{t.rosterHint}</p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={loadPreset}
-            className="clip-x border border-edge bg-panel-2 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-accent-2 transition hover:border-accent-2/60"
-          >
-            {t.loadPreset}
-          </button>
-          {players.length > 0 && (
-            <button
-              onClick={clearAll}
-              className="clip-x border border-edge bg-panel-2 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink"
-            >
-              {t.clearAll}
-            </button>
-          )}
-        </div>
-      </div>
-
-      <form onSubmit={submit} className="mt-4 flex gap-2">
-        <input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder={t.addPlaceholder}
-          maxLength={40}
-          className="flex-1 rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent"
-        />
-        <button
-          type="submit"
-          className="clip-x bg-accent px-5 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110"
-        >
-          {t.add}
-        </button>
-      </form>
-
-      <div className="mt-4 flex items-center justify-between">
-        <span className="font-display text-xs font-bold tracking-wider text-ink-dim">
-          {t.playerCount.replace("{n}", String(players.length))}
-        </span>
-        {odd && players.length >= 4 && (
-          <span className="text-xs text-bal">{t.oddNote}</span>
-        )}
-      </div>
-
-      {players.length > 0 && (
-        <ol className="mt-2 grid gap-1.5 sm:grid-cols-2">
-          {players.map((p, i) => (
-            <li
-              key={p.id}
-              className="flex items-center justify-between rounded-md border border-edge bg-panel px-3 py-2 text-sm"
-            >
-              <span>
-                <span className="font-display text-xs font-bold text-accent-2">
-                  {String(i + 1).padStart(2, "0")}
-                </span>{" "}
-                <span className="text-ink">{p.name}</span>
-              </span>
-              <button
-                onClick={() => removePlayer(p.id)}
-                aria-label={t.remove}
-                className="rounded px-1.5 text-ink-dim transition hover:text-atk"
-              >
-                ✕
-              </button>
-            </li>
-          ))}
-        </ol>
-      )}
-
-      <div className="mt-5">
-        <button
-          onClick={startDraw}
-          disabled={players.length < 4}
-          className="clip-x bg-accent px-6 py-3 font-display text-sm font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
-        >
-          {t.startDraw}
-        </button>
-        {players.length < 4 && (
-          <p className="mt-2 text-xs text-ink-dim">{t.needFour}</p>
-        )}
-      </div>
     </div>
   );
 }
