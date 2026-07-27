@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDict, isLocale, Locale, locales } from "@/i18n";
 import TournamentHostClient from "@/components/TournamentHostClient";
@@ -45,7 +46,26 @@ export default async function TournamentsPage({
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
       <h1 className="font-display text-3xl font-bold tracking-wide">{t.title}</h1>
-      <p className="mb-10 mt-1 text-sm text-ink-dim">{t.subtitle}</p>
+      <p className="mb-6 mt-1 text-sm text-ink-dim">{t.subtitle}</p>
+
+      <Link
+        href={`/${locale}/tournaments/partner`}
+        className="panel group mb-10 flex items-center justify-between gap-4 border-accent/40 bg-accent/5 p-5 transition hover:border-accent"
+      >
+        <div>
+          <div className="font-display text-lg font-bold tracking-wide text-accent">
+            {locale === "zh" ? "双人组队赛 — 转盘抽搭档" : "Partner Battle — wheel-drawn partners"}
+          </div>
+          <p className="mt-1 text-sm text-ink-dim">
+            {locale === "zh"
+              ? "随机抽搭档，瑞士轮对战，前 2 名进决赛。适合现场即时办赛。"
+              : "Random partner draw, Swiss rounds, top 2 to the final. Built for on-the-spot events."}
+          </p>
+        </div>
+        <span className="clip-x shrink-0 bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition group-hover:brightness-110">
+          {locale === "zh" ? "开始 →" : "Open →"}
+        </span>
+      </Link>
 
       <TournamentHostClient locale={locale} dict={dict} />
 
