@@ -82,6 +82,7 @@ const L = {
     scoreTie: "Scores can't tie — enter a winner",
     standingsTitle: "Standings",
     tableRank: "#",
+    tableId: "ID",
     tableTeam: "Team",
     tableRecord: "W–L",
     tableDiff: "Diff",
@@ -150,6 +151,7 @@ const L = {
     scoreTie: "比分不可打平，请分出胜负",
     standingsTitle: "积分榜",
     tableRank: "#",
+    tableId: "ID",
     tableTeam: "队伍",
     tableRecord: "胜-负",
     tableDiff: "净胜分",
@@ -241,6 +243,10 @@ export default function PartnerBattleRunner({
     const map = new Map(teams.map((tm) => [tm.id, tm.members.map(nameOf).join(" & ")]));
     return (id: string) => map.get(id) ?? "?";
   }, [teams, nameOf]);
+  const teamCode = useMemo(() => {
+    const map = new Map(teams.map((tm, i) => [tm.id, `T${String(i + 1).padStart(2, "0")}`]));
+    return (id: string) => map.get(id) ?? "T??";
+  }, [teams]);
 
   const teamIds = useMemo(() => teams.map((tm) => tm.id), [teams]);
   const leagueMatches = useMemo(() => matches.filter((m) => m.stage === "league"), [matches]);
@@ -342,6 +348,7 @@ export default function PartnerBattleRunner({
       )}
       {m.teams.length === 1 ? (
         <p className="text-sm text-ink-dim">
+          <span className="mr-2 font-display text-xs font-bold text-accent-2">{teamCode(m.teams[0])}</span>
           {teamLabel(m.teams[0])} — <span className="text-accent-2">{t.bye}</span>
         </p>
       ) : m.winner !== null && editingId !== m.id ? (
@@ -354,7 +361,10 @@ export default function PartnerBattleRunner({
                   m.winner === tid ? "bg-accent/20 font-bold text-accent" : "text-ink-dim/60"
                 }`}
               >
-                <span className={m.winner === tid ? "" : "line-through"}>{teamLabel(tid)}</span>
+                <span className={m.winner === tid ? "" : "line-through"}>
+                  <span className="mr-2 font-display text-[10px] font-bold text-accent-2">{teamCode(tid)}</span>
+                  {teamLabel(tid)}
+                </span>
                 <span>{m.scores?.[tid] ?? 0}</span>
               </div>
             ))}
@@ -369,6 +379,7 @@ export default function PartnerBattleRunner({
       ) : (
         <MatchScoreForm
           match={m}
+          teamCode={teamCode}
           teamLabel={teamLabel}
           onConfirm={(scores) => report(m.id, scores)}
           onCancel={m.winner !== null ? () => setEditingId(null) : undefined}
@@ -622,7 +633,9 @@ export default function PartnerBattleRunner({
                       forming ? "border-accent/50 bg-accent/5" : "border-edge bg-panel"
                     }`}
                   >
-                    <span className="font-display text-xs font-bold text-accent-2">#{i + 1}</span>{" "}
+                    <span className="font-display text-xs font-bold text-accent-2">
+                      T{String(i + 1).padStart(2, "0")}
+                    </span>{" "}
                     <span className="text-ink">
                       {tm.members.map(nameOf).join(" & ")}
                       {forming && <span className="ml-2 text-xs text-ink-dim">({t.forming}…)</span>}
@@ -652,12 +665,12 @@ export default function PartnerBattleRunner({
                 <div className="mt-4 space-y-2">
                   {champ && (
                     <div className="rounded-md border border-accent/40 bg-accent/10 px-4 py-3 font-display text-sm font-bold tracking-wider text-accent">
-                      {t.champion}: {teamLabel(champ)}
+                      {t.champion}: {teamCode(champ)} {teamLabel(champ)}
                     </div>
                   )}
                   {consChamp && (
                     <div className="rounded-md border border-accent-2/40 bg-accent-2/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent-2">
-                      {t.consChampion}: {teamLabel(consChamp)}
+                      {t.consChampion}: {teamCode(consChamp)} {teamLabel(consChamp)}
                     </div>
                   )}
                 </div>
@@ -734,6 +747,7 @@ export default function PartnerBattleRunner({
                 <thead>
                   <tr className="text-ink-dim">
                     <th className="py-1 pr-1 text-left font-medium">{t.tableRank}</th>
+                    <th className="py-1 pr-1 text-left font-medium">{t.tableId}</th>
                     <th className="py-1 pr-1 text-left font-medium">{t.tableTeam}</th>
                     <th className="py-1 pr-1 text-right font-medium">{t.tableRecord}</th>
                     <th className="py-1 pr-1 text-right font-medium">{t.tableDiff}</th>
@@ -754,6 +768,9 @@ export default function PartnerBattleRunner({
                           ) : (
                             <span className="text-ink-dim">{i + 1}</span>
                           )}
+                        </td>
+                        <td className="py-1.5 pr-1 font-display text-[10px] font-bold text-accent-2">
+                          {teamCode(row.id)}
                         </td>
                         <td className="py-1.5 pr-1 text-ink">{teamLabel(row.id)}</td>
                         <td className="py-1.5 pr-1 text-right text-ink-dim">
@@ -785,6 +802,7 @@ export default function PartnerBattleRunner({
 
 function MatchScoreForm({
   match,
+  teamCode,
   teamLabel,
   onConfirm,
   onCancel,
@@ -794,6 +812,7 @@ function MatchScoreForm({
   vs,
 }: {
   match: TeamMatch;
+  teamCode: (id: string) => string;
   teamLabel: (id: string) => string;
   onConfirm: (scores: Record<string, number>) => void;
   onCancel?: () => void;
@@ -829,7 +848,10 @@ function MatchScoreForm({
               <div className="my-0.5 text-center text-[10px] font-bold text-ink-dim">{vs}</div>
             )}
             <div className="flex items-center gap-2">
-              <span className="flex-1 truncate text-sm text-ink">{teamLabel(tid)}</span>
+              <span className="min-w-0 flex-1 truncate text-sm text-ink">
+                <span className="mr-2 font-display text-[10px] font-bold text-accent-2">{teamCode(tid)}</span>
+                {teamLabel(tid)}
+              </span>
               <input
                 type="number"
                 min={0}
