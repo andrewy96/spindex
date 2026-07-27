@@ -190,7 +190,7 @@ export default function PartnerBattleRunner({
   const t = L[locale] ?? L.en;
 
   const [phase, setPhase] = useState<Phase>("roster");
-  const [mode, setMode] = useState<BattleMode>("swiss");
+  const [mode, setMode] = useState<BattleMode>("league");
   const [players, setPlayers] = useState<Player[]>([]);
   const [draw, setDraw] = useState<string[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -206,7 +206,7 @@ export default function PartnerBattleRunner({
       if (raw) {
         const s = JSON.parse(raw) as PersistState;
         setPhase(s.phase ?? "roster");
-        setMode(s.mode ?? "swiss");
+        setMode(s.mode ?? "league");
         setPlayers(s.players ?? []);
         setDraw(s.draw ?? []);
         setTeams(s.teams ?? []);

@@ -36,6 +36,16 @@ function groupByRound(matches: BeyliveMatch[]) {
   return [...map.entries()].sort((a, b) => a[0] - b[0]);
 }
 
+function roundTitle(roundNo: number, matches: BeyliveMatch[], teamMode: boolean) {
+  if (!teamMode) return `Round ${roundNo}`;
+  const hasChampionship = matches.some((match) => match.bracket === "grand");
+  const hasConsolation = matches.some((match) => match.bracket === "losers");
+  if (hasChampionship && hasConsolation) return "Playoffs";
+  if (hasChampionship) return "Championship";
+  if (hasConsolation) return "Consolation";
+  return `League Round ${roundNo}`;
+}
+
 function MatchCard({ match }: { match: BeyliveMatch }) {
   const players = [...(match.players ?? [])].sort((a, b) => a.slot_no - b.slot_no);
   return (
@@ -165,7 +175,7 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
             rounds.map(([roundNo, roundMatches]) => (
               <section key={roundNo} className="panel p-5">
                 <div className="mb-3 font-display text-sm font-bold tracking-wider text-ink-dim">
-                  Round {roundNo}
+                  {roundTitle(roundNo, roundMatches, teamMode)}
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {roundMatches.map((match) => (

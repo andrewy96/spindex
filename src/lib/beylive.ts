@@ -85,6 +85,8 @@ export function beyliveParticipantWon(match: BeyliveMatch, player: BeyliveMatchP
 }
 
 export function beyliveFormatLabel(format: CommunityTournament["format"]) {
+  if (format === "partner") return "Partner League";
+
   return format
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))

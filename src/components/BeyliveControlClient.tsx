@@ -75,6 +75,13 @@ function TeamRow({
   );
 }
 
+function matchStageLabel(match: BeyliveMatch, teamMode: boolean) {
+  if (!teamMode) return `Round ${match.round_no}`;
+  if (match.bracket === "grand") return "Championship";
+  if (match.bracket === "losers") return "Consolation";
+  return `League R${match.round_no}`;
+}
+
 export default function BeyliveControlClient({ id, locale }: { id: string; locale: Locale }) {
   const { enabled, profile } = useAuth();
   const [tournament, setTournament] = useState<CommunityTournament | null>(null);
@@ -290,7 +297,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                   <div key={match.id} className="rounded-md border border-edge bg-panel p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="text-xs font-semibold text-ink-dim">
-                        Round {match.round_no} · Table {match.table_no ?? match.match_no} · Match {match.match_no}
+                        {matchStageLabel(match, teamMode)} · Table {match.table_no ?? match.match_no} · Match {match.match_no}
                       </div>
                       <span className={`text-xs font-bold ${match.status === "live" ? "text-accent" : "text-ink-dim"}`}>
                         {match.status}

@@ -28,6 +28,12 @@ const FINISHES: { key: Finish; label: string; color: string }[] = [
   { key: "xtreme", label: "Xtreme +3", color: "var(--color-atk)" },
 ];
 
+function matchStageLabel(match: BeyliveMatch) {
+  if (match.bracket === "grand") return "Championship";
+  if (match.bracket === "losers") return "Consolation";
+  return `Round ${match.round_no}`;
+}
+
 export default function BeyliveMatchClient({
   tournamentId,
   matchId,
@@ -159,7 +165,7 @@ export default function BeyliveMatchClient({
           <div>
             <div className="font-display text-xs font-bold tracking-[0.28em] text-accent">BEYLIVE SCOREBOARD</div>
             <h1 className="mt-2 font-display text-2xl font-black tracking-wide">
-              Round {match.round_no} · Table {match.table_no ?? match.match_no}
+              {matchStageLabel(match)} · Table {match.table_no ?? match.match_no}
             </h1>
             <p className="mt-1 text-sm text-ink-dim">First to {match.target_score} · Match {match.match_no}</p>
           </div>
