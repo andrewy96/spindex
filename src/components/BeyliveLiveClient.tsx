@@ -23,6 +23,7 @@ import {
   beylivePlayerCode,
   beyliveStandings,
   beyliveStatusLabel,
+  beyliveStreamEmbedUrl,
 } from "@/lib/beylive";
 import { profileDisplayName } from "@/lib/profileName";
 
@@ -79,10 +80,47 @@ function MatchCard({ match }: { match: BeyliveMatch }) {
   );
 }
 
+function StreamPanel({ tournament, embedUrl }: { tournament: CommunityTournament; embedUrl: string | null }) {
+  if (!tournament.stream_enabled || !tournament.stream_url) return null;
+
+  return (
+    <section className="panel mt-4 overflow-hidden p-0">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-edge bg-panel px-4 py-3">
+        <div>
+          <div className="font-display text-[10px] font-bold tracking-[0.24em] text-accent">LIVE STREAM</div>
+          <div className="mt-0.5 text-sm font-semibold text-ink">
+            {tournament.stream_title || "BEYLIVE live feed"}
+          </div>
+        </div>
+        <span className="rounded-full bg-accent/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-accent">
+          On air
+        </span>
+      </div>
+      <div className="aspect-video bg-black">
+        {embedUrl ? (
+          <iframe
+            src={embedUrl}
+            title={tournament.stream_title || "BEYLIVE live stream"}
+            allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+            className="h-full w-full"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-ink-dim">
+            Stream unavailable
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export default function BeyliveLiveClient({ id, locale }: { id: string; locale: Locale }) {
   const [tournament, setTournament] = useState<CommunityTournament | null>(null);
   const [matches, setMatches] = useState<BeyliveMatch[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hostName, setHostName] = useState("localhost");
 
   const load = useCallback(async () => {
     if (!supabase) return;
@@ -105,6 +143,10 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
   }, [load]);
 
   useEffect(() => {
+    setHostName(window.location.hostname || "localhost");
+  }, []);
+
+  useEffect(() => {
     if (!supabase) return;
     const channel = supabase
       .channel(`beylive-live-${id}`)
@@ -120,6 +162,10 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
 
   const standings = useMemo(() => beyliveStandings(tournament, matches), [matches, tournament]);
   const rounds = useMemo(() => groupByRound(matches), [matches]);
+  const streamEmbedUrl = useMemo(
+    () => beyliveStreamEmbedUrl(tournament?.stream_enabled ? tournament.stream_url : null, hostName),
+    [hostName, tournament?.stream_enabled, tournament?.stream_url],
+  );
   const teamMode = isBeyliveTeamTournament(tournament) && (tournament?.teams?.length ?? 0) > 0;
   const teams = useMemo(
     () =>
@@ -166,6 +212,8 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
           </div>
         )}
       </section>
+
+      <StreamPanel tournament={tournament} embedUrl={streamEmbedUrl} />
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[1.45fr_0.85fr]">
         <div className="grid gap-4">

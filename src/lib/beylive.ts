@@ -38,6 +38,68 @@ export function beyliveQrValue(profile: Profile | null | undefined) {
   return profile?.player_code || profile?.handle || profile?.id || "";
 }
 
+function cleanStreamToken(value: string | null | undefined) {
+  if (!value) return null;
+  const token = value.trim();
+  return /^[a-zA-Z0-9_-]{3,128}$/.test(token) ? token : null;
+}
+
+function youtubeVideoId(url: URL) {
+  const host = url.hostname.replace(/^www\./, "").replace(/^m\./, "");
+  if (host === "youtu.be") return cleanStreamToken(url.pathname.split("/").filter(Boolean)[0]);
+  if (!["youtube.com", "youtube-nocookie.com"].includes(host)) return null;
+
+  const parts = url.pathname.split("/").filter(Boolean);
+  if (url.pathname === "/watch") return cleanStreamToken(url.searchParams.get("v"));
+  if (["embed", "live", "shorts", "v"].includes(parts[0])) return cleanStreamToken(parts[1]);
+  return cleanStreamToken(url.searchParams.get("v"));
+}
+
+export function beyliveStreamEmbedUrl(raw: string | null | undefined, parentHost = "localhost") {
+  const value = raw?.trim();
+  if (!value) return null;
+
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:") return null;
+
+    const host = url.hostname.replace(/^www\./, "").replace(/^m\./, "");
+    const youtubeId = youtubeVideoId(url);
+    if (youtubeId) return `https://www.youtube-nocookie.com/embed/${youtubeId}?autoplay=1&mute=1`;
+
+    if (host === "twitch.tv") {
+      const parts = url.pathname.split("/").filter(Boolean);
+      const parent = encodeURIComponent(parentHost || "localhost");
+      if (parts[0] === "videos" && /^\d+$/.test(parts[1] ?? "")) {
+        return `https://player.twitch.tv/?video=${parts[1]}&parent=${parent}&autoplay=true&muted=true`;
+      }
+      const channel = cleanStreamToken(parts[0]);
+      if (channel) return `https://player.twitch.tv/?channel=${channel}&parent=${parent}&autoplay=true&muted=true`;
+    }
+
+    if (host === "player.twitch.tv") {
+      if (!url.searchParams.has("parent")) url.searchParams.set("parent", parentHost || "localhost");
+      if (!url.searchParams.has("autoplay")) url.searchParams.set("autoplay", "true");
+      if (!url.searchParams.has("muted")) url.searchParams.set("muted", "true");
+      return url.toString();
+    }
+
+    if (host === "facebook.com" || host === "fb.watch") {
+      return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url.toString())}&show_text=false&width=1280`;
+    }
+
+    if (host === "player.vimeo.com") return url.toString();
+    if (host === "vimeo.com") {
+      const videoId = url.pathname.split("/").filter(Boolean).find((part) => /^\d+$/.test(part));
+      if (videoId) return `https://player.vimeo.com/video/${videoId}`;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 export function isBeyliveTeamTournament(tournament: CommunityTournament | null | undefined) {
   return tournament?.format === "partner";
 }

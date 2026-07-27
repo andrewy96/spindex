@@ -83,6 +83,9 @@ export default function BeyliveHubClient({ locale }: { locale: Locale }) {
                 <span className="rounded bg-panel px-2 py-0.5 text-accent-2">{beyliveFormatLabel(item.format)}</span>
                 <span className="rounded bg-panel px-2 py-0.5 text-ink-dim">Round {item.current_round ?? "-"}</span>
                 <span className="rounded bg-panel px-2 py-0.5 text-ink-dim">First to {item.target_score}</span>
+                {item.stream_enabled && item.stream_url && (
+                  <span className="rounded bg-accent/10 px-2 py-0.5 text-accent">Stream</span>
+                )}
               </div>
               {(item.winner_team || item.winner_profile) && (
                 <div className="rounded bg-accent/10 px-3 py-2 text-sm font-semibold text-accent">

@@ -155,6 +155,9 @@ export interface CommunityTournament {
   format: TournamentFormat;
   max_players: number;
   live_enabled: boolean;
+  stream_url: string | null;
+  stream_title: string | null;
+  stream_enabled: boolean;
   current_round: number | null;
   target_score: number;
   winner_id: string | null;
