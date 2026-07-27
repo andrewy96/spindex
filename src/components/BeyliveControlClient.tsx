@@ -27,31 +27,25 @@ import {
   findTournamentPlayerByScan,
   isBeyliveTeamTournament,
 } from "@/lib/beylive";
+import {
+  findLocalPartnerTeamByScan,
+  isLocalPartnerLive,
+  localPartnerDisplayMatches,
+  localPartnerMode,
+  localPartnerStageLabel,
+  localPartnerTableLabel,
+  localPartnerTeamCode,
+  localPartnerTeamName,
+  localPartnerTeams,
+  LocalDisplayTeam,
+  LocalPartnerState,
+  PARTNER_WIN_SCORE,
+  scoreLocalPartnerMatch,
+  TeamMatch,
+} from "@/lib/beylivePartner";
 import { profileDisplayName } from "@/lib/profileName";
 import BeyliveScanner from "./BeyliveScanner";
 import QrCodeBadge from "./QrCodeBadge";
-
-interface LocalPartnerPlayer {
-  id: string;
-  name: string;
-}
-
-interface LocalPartnerTeam {
-  id: string;
-  members: string[];
-}
-
-interface LocalPartnerState {
-  players?: LocalPartnerPlayer[];
-  teams?: LocalPartnerTeam[];
-}
-
-interface LocalDisplayTeam {
-  id: string;
-  code: string;
-  name: string;
-  members: string[];
-}
 
 function PlayerRow({
   player,
@@ -136,29 +130,195 @@ function matchTeams(matches: BeyliveMatch[]) {
   return [...map.values()];
 }
 
-function localPartnerTeams(state: LocalPartnerState | null): LocalDisplayTeam[] {
-  if (!state?.teams?.length) return [];
-  const names = new Map((state.players ?? []).map((player) => [player.id, player.name]));
-  return state.teams.map((team, index) => {
-    const members = team.members.map((memberId) => names.get(memberId) ?? memberId);
-    const code = `T${String(index + 1).padStart(2, "0")}`;
-    return {
-      id: team.id,
-      code,
-      name: members.join(" / ") || `Team ${String(index + 1).padStart(2, "0")}`,
-      members,
-    };
-  });
+function LocalMatchScoreForm({
+  match,
+  state,
+  onConfirm,
+}: {
+  match: TeamMatch;
+  state: LocalPartnerState;
+  onConfirm: (scores: Record<string, number>) => void;
+}) {
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    match.scores
+      ? Object.fromEntries(match.teams.map((teamId) => [teamId, String(match.scores?.[teamId] ?? 0)]))
+      : {},
+  );
+  const [tie, setTie] = useState(false);
+
+  useEffect(() => {
+    setValues(
+      match.scores
+        ? Object.fromEntries(match.teams.map((teamId) => [teamId, String(match.scores?.[teamId] ?? 0)]))
+        : {},
+    );
+    setTie(false);
+  }, [match.id, match.scores]);
+
+  const submit = () => {
+    const scores: Record<string, number> = {};
+    for (const teamId of match.teams) scores[teamId] = Math.max(0, Number(values[teamId]) || 0);
+    const top = Math.max(...match.teams.map((teamId) => scores[teamId] ?? 0));
+    if (match.teams.filter((teamId) => (scores[teamId] ?? 0) === top).length !== 1) {
+      setTie(true);
+      return;
+    }
+    setTie(false);
+    onConfirm(scores);
+  };
+
+  return (
+    <div>
+      <div className="grid gap-1.5">
+        {match.teams.map((teamId, index) => (
+          <div key={teamId}>
+            {index === 1 && <div className="my-0.5 text-center text-[10px] font-bold text-ink-dim">vs</div>}
+            <div className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate text-sm text-ink">
+                <span className="mr-2 font-display text-[10px] font-bold text-accent-2">
+                  {localPartnerTeamCode(state, teamId)}
+                </span>
+                {localPartnerTeamName(state, teamId)}
+              </span>
+              <input
+                type="number"
+                min={0}
+                inputMode="numeric"
+                value={values[teamId] ?? ""}
+                onChange={(event) => setValues((current) => ({ ...current, [teamId]: event.target.value }))}
+                placeholder="0"
+                className="w-14 rounded border border-edge bg-panel-2 px-2 py-1 text-center text-sm outline-none focus:border-accent"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={submit}
+        className="clip-x mt-2 w-full bg-accent px-3 py-2 font-display text-[10px] font-bold tracking-wider text-bg transition hover:brightness-110"
+      >
+        Confirm score
+      </button>
+      {tie && <p className="mt-1 text-[10px] text-atk">Scores cannot tie.</p>}
+    </div>
+  );
 }
 
-function findLocalTeamByScan(teams: LocalDisplayTeam[], raw: string): LocalDisplayTeam | null {
-  const value = raw.trim().replace(/^#/, "").toLowerCase();
-  if (!value) return null;
+function LocalPartnerMatchCard({
+  match,
+  allMatches,
+  state,
+  canScore,
+  locale,
+  tournamentId,
+  onScore,
+}: {
+  match: TeamMatch;
+  allMatches: TeamMatch[];
+  state: LocalPartnerState;
+  canScore: boolean;
+  locale: Locale;
+  tournamentId: string;
+  onScore: (matchId: string, scores: Record<string, number>) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const mode = localPartnerMode(state);
+  const completed = match.winner !== null;
+
   return (
-    teams.find((team) => {
-      const code = team.code.toLowerCase();
-      return team.id.toLowerCase() === value || code === value || code.replace(/^t/, "") === value;
-    }) ?? null
+    <div className={`rounded-md border p-3 ${completed ? "border-accent/40 bg-accent/5" : "border-edge bg-panel"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs font-semibold text-ink-dim">
+          {localPartnerStageLabel(match, mode)} - {localPartnerTableLabel(allMatches, match)}
+        </div>
+        <span className={`text-xs font-bold ${completed ? "text-accent" : "text-ink-dim"}`}>
+          {completed ? "completed" : "scheduled"}
+        </span>
+      </div>
+
+      <div className="mt-2">
+        {match.teams.length === 1 ? (
+          <p className="rounded bg-bg px-2 py-2 text-sm text-ink-dim">
+            <span className="mr-2 font-mono text-[11px] text-accent-2">
+              {localPartnerTeamCode(state, match.teams[0])}
+            </span>
+            {localPartnerTeamName(state, match.teams[0])} bye
+          </p>
+        ) : completed && !editing ? (
+          <div>
+            <div className="grid gap-1.5">
+              {match.teams.map((teamId) => {
+                const won = match.winner === teamId;
+                return (
+                  <div
+                    key={teamId}
+                    className={`flex items-center justify-between rounded px-2 py-1.5 ${
+                      won ? "bg-accent/15 text-accent" : "bg-bg text-ink-dim"
+                    }`}
+                  >
+                    <span className="min-w-0 truncate text-sm">
+                      <span className="mr-2 font-mono text-[11px] text-accent-2">
+                        {localPartnerTeamCode(state, teamId)}
+                      </span>
+                      {localPartnerTeamName(state, teamId)}
+                    </span>
+                    <span className="font-display text-xl font-black">{match.scores?.[teamId] ?? 0}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {canScore && (
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="mt-2 text-[10px] font-semibold text-ink-dim underline decoration-dotted transition hover:text-accent-2"
+              >
+                Edit
+              </button>
+            )}
+          </div>
+        ) : canScore ? (
+          <LocalMatchScoreForm
+            match={match}
+            state={state}
+            onConfirm={(scores) => {
+              setEditing(false);
+              onScore(match.id, scores);
+            }}
+          />
+        ) : (
+          <div className="grid gap-1.5">
+            {match.teams.map((teamId, index) => (
+              <div key={teamId}>
+                {index === 1 && <div className="my-0.5 text-center text-[10px] font-bold text-ink-dim">vs</div>}
+                <div className="rounded bg-bg px-2 py-1.5 text-sm text-ink-dim">
+                  <span className="mr-2 font-mono text-[11px] text-accent-2">
+                    {localPartnerTeamCode(state, teamId)}
+                  </span>
+                  {localPartnerTeamName(state, teamId)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Link
+          href={`/${locale}/tournaments/${tournamentId}/matches/${match.id}`}
+          className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20"
+        >
+          Judge page
+        </Link>
+        <Link
+          href={`/${locale}/tournaments/${tournamentId}/live`}
+          className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink"
+        >
+          View live
+        </Link>
+      </div>
+    </div>
   );
 }
 
@@ -176,6 +336,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
   const [streamEnabled, setStreamEnabled] = useState(false);
   const [streamBusy, setStreamBusy] = useState(false);
   const [streamSaved, setStreamSaved] = useState(false);
+  const partnerCacheKey = useMemo(() => `spindex.partner-battle.${id}`, [id]);
 
   const load = useCallback(async () => {
     if (!supabase) return;
@@ -207,14 +368,13 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
 
   useEffect(() => {
     let active = true;
-    const cacheKey = `spindex.partner-battle.${id}`;
 
     const applyState = (state: LocalPartnerState | null) => {
       if (!active) return;
       setLocalPartnerState(state);
       if (!state) return;
       try {
-        window.localStorage.setItem(cacheKey, JSON.stringify(state));
+        window.localStorage.setItem(partnerCacheKey, JSON.stringify(state));
       } catch {
         /* cache unavailable */
       }
@@ -223,7 +383,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     const loadPartnerState = async () => {
       let next: LocalPartnerState | null = null;
       try {
-        const raw = window.localStorage.getItem(cacheKey);
+        const raw = window.localStorage.getItem(partnerCacheKey);
         if (raw) next = JSON.parse(raw) as LocalPartnerState;
       } catch {
         next = null;
@@ -268,7 +428,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
       active = false;
       supabase?.removeChannel(channel);
     };
-  }, [id]);
+  }, [id, partnerCacheKey]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -312,9 +472,11 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
   );
   const localTeams = useMemo(() => localPartnerTeams(localPartnerState), [localPartnerState]);
   const scannedLocalTeam = useMemo(
-    () => findLocalTeamByScan(localTeams, scanValue),
+    () => findLocalPartnerTeamByScan(localTeams, scanValue),
     [localTeams, scanValue],
   );
+  const localPartnerReady = teamMode && matches.length === 0 && isLocalPartnerLive(localPartnerState);
+  const localMatches = useMemo(() => localPartnerDisplayMatches(localPartnerState), [localPartnerState]);
   const isHost = !!profile && profile.id === tournament?.host;
   const currentRound = tournament?.current_round ?? 1;
   const currentRoundMatches = matches.filter((match) => match.round_no === currentRound);
@@ -337,6 +499,75 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
       return;
     }
     load();
+  };
+
+  const saveLocalPartnerState = async (nextState: LocalPartnerState) => {
+    if (!supabase || !tournament || !isHost) return false;
+
+    setLocalPartnerState(nextState);
+    try {
+      window.localStorage.setItem(partnerCacheKey, JSON.stringify(nextState));
+    } catch {
+      /* cache unavailable */
+    }
+
+    const { error: stateError } = await supabase
+      .from("partner_battles")
+      .upsert({
+        tournament_id: tournament.id,
+        state: nextState,
+        updated_by: profile?.id ?? null,
+        updated_at: new Date().toISOString(),
+      });
+
+    if (stateError) {
+      setError(stateError.message.replace(/_/g, " "));
+      return false;
+    }
+
+    const { error: tournamentError } = await supabase
+      .from("tournaments")
+      .update({
+        live_enabled: true,
+        status: "started",
+        current_round: nextState.round ?? 1,
+        target_score: PARTNER_WIN_SCORE,
+      })
+      .eq("id", tournament.id);
+
+    if (tournamentError) {
+      setError(tournamentError.message.replace(/_/g, " "));
+      return false;
+    }
+
+    load();
+    return true;
+  };
+
+  const startLocalBeylive = async () => {
+    if (!localPartnerState || !localPartnerReady) {
+      setError("Start the Partner Battle first, then publish it to BEYLIVE.");
+      return;
+    }
+    setBusy("start");
+    setError(null);
+    await saveLocalPartnerState({
+      ...localPartnerState,
+      phase: "battle",
+      round: localPartnerState.round ?? 1,
+    });
+    setBusy(null);
+  };
+
+  const reportLocalPartnerMatch = async (matchId: string, scores: Record<string, number>) => {
+    if (!localPartnerState) return;
+    const nextState = scoreLocalPartnerMatch(localPartnerState, matchId, scores);
+    if (!nextState) {
+      setError("Scores cannot tie. Enter one winning team.");
+      return;
+    }
+    setError(null);
+    await saveLocalPartnerState(nextState);
   };
 
   const saveStream = async () => {
@@ -407,11 +638,15 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
           <div className="mt-5 grid gap-4">
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => run("start")}
-                disabled={busy !== null || matches.length > 0 || players.length < 2}
+                onClick={() => (players.length >= 2 ? run("start") : startLocalBeylive())}
+                disabled={busy !== null || matches.length > 0 || (players.length < 2 && !localPartnerReady)}
                 className="clip-x bg-accent px-5 py-2.5 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-40"
               >
-                {busy === "start" ? "Starting..." : "Start BEYLIVE"}
+                {busy === "start"
+                  ? "Starting..."
+                  : players.length >= 2
+                    ? "Start BEYLIVE"
+                    : "Start from Partner Battle"}
               </button>
               <button
                 onClick={() => run("advance")}
@@ -499,8 +734,10 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                 </div>
               ) : (
                 <p className="mt-2 text-sm text-atk">
-                  {teamMode && teams.length === 0
-                    ? "No BEYLIVE database team found yet. Local Partner Battle teams can be shown here, but database scoring needs joined players and Start BEYLIVE."
+                  {teamMode && teams.length === 0 && localTeams.length > 0
+                    ? `No local team found for ${scanValue}. Try T01, 01, or scan the QR.`
+                    : teamMode && teams.length === 0
+                      ? "No team IDs yet. Run the Partner Battle draw or add joined players, then start BEYLIVE."
                     : `No ${teamMode ? "team" : "player"} found for ${scanValue}`}
                 </p>
               )}
@@ -548,9 +785,26 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
         <section className="panel p-5">
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="font-display text-sm font-bold tracking-wider text-ink-dim">Match control</div>
-            <div className="text-xs text-ink-dim">{matches.length} matches</div>
+            <div className="text-xs text-ink-dim">
+              {localPartnerReady ? localMatches.length : matches.length} matches
+            </div>
           </div>
-          {matches.length === 0 ? (
+          {matches.length === 0 && localPartnerReady && localPartnerState ? (
+            <div className="grid gap-3">
+              {localMatches.map((match) => (
+                <LocalPartnerMatchCard
+                  key={match.id}
+                  match={match}
+                  allMatches={localMatches}
+                  state={localPartnerState}
+                  canScore={isHost}
+                  locale={locale}
+                  tournamentId={id}
+                  onScore={reportLocalPartnerMatch}
+                />
+              ))}
+            </div>
+          ) : matches.length === 0 ? (
             <p className="py-12 text-center text-sm text-ink-dim">Start BEYLIVE to generate matches from the existing tournament format.</p>
           ) : (
             <div className="grid gap-3">

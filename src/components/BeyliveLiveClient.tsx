@@ -25,6 +25,21 @@ import {
   beyliveStatusLabel,
   beyliveStreamEmbedUrl,
 } from "@/lib/beylive";
+import {
+  isLocalPartnerLive,
+  localPartnerChampion,
+  localPartnerConsolationChampion,
+  localPartnerGroupedRounds,
+  localPartnerMode,
+  localPartnerStageLabel,
+  localPartnerStandings,
+  localPartnerTableLabel,
+  localPartnerTeamCode,
+  localPartnerTeamName,
+  localPartnerTeams,
+  LocalPartnerState,
+  TeamMatch,
+} from "@/lib/beylivePartner";
 import { profileDisplayName } from "@/lib/profileName";
 
 function groupByRound(matches: BeyliveMatch[]) {
@@ -80,6 +95,63 @@ function MatchCard({ match }: { match: BeyliveMatch }) {
   );
 }
 
+function localRoundTitle(roundNo: number, matches: TeamMatch[], mode: ReturnType<typeof localPartnerMode>) {
+  const hasChampionship = matches.some((match) => match.bracket === "championship");
+  const hasConsolation = matches.some((match) => match.bracket === "consolation");
+  if (hasChampionship && hasConsolation) return "Playoffs";
+  if (matches[0]) return localPartnerStageLabel(matches[0], mode);
+  return `Round ${roundNo}`;
+}
+
+function LocalPartnerLiveMatchCard({
+  match,
+  allMatches,
+  state,
+}: {
+  match: TeamMatch;
+  allMatches: TeamMatch[];
+  state: LocalPartnerState;
+}) {
+  const completed = match.winner !== null;
+
+  return (
+    <div className={`rounded-md border p-3 ${completed ? "border-accent/40 bg-accent/5" : "border-edge bg-panel"}`}>
+      <div className="mb-2 flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-ink-dim">
+        <span>{localPartnerTableLabel(allMatches, match)}</span>
+        <span className={completed ? "text-accent" : ""}>{completed ? "Completed" : "Scheduled"}</span>
+      </div>
+      <div className="grid gap-1.5">
+        {match.teams.length === 1 ? (
+          <div className="rounded bg-bg/70 px-2 py-1.5 text-sm text-ink-dim">
+            <span className="mr-2 font-mono text-[11px] text-accent-2">
+              {localPartnerTeamCode(state, match.teams[0])}
+            </span>
+            {localPartnerTeamName(state, match.teams[0])} bye
+          </div>
+        ) : (
+          match.teams.map((teamId) => {
+            const won = match.winner === teamId;
+            return (
+              <div
+                key={teamId}
+                className={`flex items-center justify-between gap-3 rounded px-2 py-1.5 ${
+                  won ? "bg-accent/15 text-accent" : "bg-bg/70 text-ink"
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold">{localPartnerTeamName(state, teamId)}</div>
+                  <div className="text-[10px] text-ink-dim">{localPartnerTeamCode(state, teamId)}</div>
+                </div>
+                <div className="font-display text-3xl font-black">{match.scores?.[teamId] ?? 0}</div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 function StreamPanel({ tournament, embedUrl }: { tournament: CommunityTournament; embedUrl: string | null }) {
   if (!tournament.stream_enabled || !tournament.stream_url) return null;
 
@@ -119,6 +191,7 @@ function StreamPanel({ tournament, embedUrl }: { tournament: CommunityTournament
 export default function BeyliveLiveClient({ id, locale }: { id: string; locale: Locale }) {
   const [tournament, setTournament] = useState<CommunityTournament | null>(null);
   const [matches, setMatches] = useState<BeyliveMatch[]>([]);
+  const [localPartnerState, setLocalPartnerState] = useState<LocalPartnerState | null>(null);
   const [loading, setLoading] = useState(true);
   const [hostName, setHostName] = useState("localhost");
 
@@ -143,6 +216,69 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
   }, [load]);
 
   useEffect(() => {
+    let active = true;
+    const cacheKey = `spindex.partner-battle.${id}`;
+
+    const applyState = (state: LocalPartnerState | null) => {
+      if (!active) return;
+      setLocalPartnerState(state);
+      if (!state) return;
+      try {
+        window.localStorage.setItem(cacheKey, JSON.stringify(state));
+      } catch {
+        /* cache unavailable */
+      }
+    };
+
+    const loadPartnerState = async () => {
+      try {
+        const raw = window.localStorage.getItem(cacheKey);
+        if (raw) applyState(JSON.parse(raw) as LocalPartnerState);
+      } catch {
+        /* ignore cache */
+      }
+
+      if (!supabase) return;
+      const { data } = await supabase
+        .from("partner_battles")
+        .select("state")
+        .eq("tournament_id", id)
+        .maybeSingle();
+      if (data?.state) applyState(data.state as LocalPartnerState);
+    };
+
+    loadPartnerState();
+
+    if (!supabase) {
+      return () => {
+        active = false;
+      };
+    }
+
+    const channel = supabase
+      .channel(`partner-battle-live-${id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "partner_battles",
+          filter: `tournament_id=eq.${id}`,
+        },
+        (payload) => {
+          const state = (payload.new as { state?: LocalPartnerState } | null)?.state;
+          if (state) applyState(state);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase?.removeChannel(channel);
+    };
+  }, [id]);
+
+  useEffect(() => {
     setHostName(window.location.hostname || "localhost");
   }, []);
 
@@ -160,19 +296,50 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
     };
   }, [id, load]);
 
-  const standings = useMemo(() => beyliveStandings(tournament, matches), [matches, tournament]);
+  const dbStandings = useMemo(() => beyliveStandings(tournament, matches), [matches, tournament]);
   const rounds = useMemo(() => groupByRound(matches), [matches]);
   const streamEmbedUrl = useMemo(
     () => beyliveStreamEmbedUrl(tournament?.stream_enabled ? tournament.stream_url : null, hostName),
     [hostName, tournament?.stream_enabled, tournament?.stream_url],
   );
-  const teamMode = isBeyliveTeamTournament(tournament) && (tournament?.teams?.length ?? 0) > 0;
+  const localPartnerReady = isBeyliveTeamTournament(tournament) && matches.length === 0 && isLocalPartnerLive(localPartnerState);
+  const localMode = localPartnerMode(localPartnerState);
+  const localRounds = useMemo(() => localPartnerGroupedRounds(localPartnerState), [localPartnerState]);
+  const localTeams = useMemo(() => localPartnerTeams(localPartnerState), [localPartnerState]);
+  const localChampionId = localPartnerChampion(localPartnerState);
+  const localConsolationId = localPartnerConsolationChampion(localPartnerState);
+  const localChampion = localChampionId ? localTeams.find((team) => team.id === localChampionId) : null;
+  const localConsolation = localConsolationId ? localTeams.find((team) => team.id === localConsolationId) : null;
+  const teamMode = isBeyliveTeamTournament(tournament) && ((tournament?.teams?.length ?? 0) > 0 || localPartnerReady);
   const teams = useMemo(
     () =>
       [...(tournament?.teams ?? [])].sort(
         (a, b) => (a.seed ?? a.team_no) - (b.seed ?? b.team_no) || a.team_no - b.team_no,
       ),
     [tournament],
+  );
+  const displayStandings = useMemo(
+    () =>
+      localPartnerReady
+        ? localPartnerStandings(localPartnerState).map((row) => ({
+            id: row.id,
+            event_id: row.code,
+            name: row.name,
+            sub: row.members.join(" / "),
+            wins: row.wins,
+            losses: row.losses,
+            diff: row.diff,
+          }))
+        : dbStandings.map((row) => ({
+            id: row.id,
+            event_id: row.event_id,
+            name: row.name,
+            sub: row.player_code,
+            wins: row.wins,
+            losses: row.losses,
+            diff: row.diff,
+          })),
+    [dbStandings, localPartnerReady, localPartnerState],
   );
 
   if (!supabase) {
@@ -211,13 +378,43 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
             Champion: {tournament.winner_team ? `${beyliveTeamCode(tournament.winner_team)} ${beyliveTeamName(tournament.winner_team)}` : profileDisplayName(tournament.winner_profile)}
           </div>
         )}
+        {localPartnerReady && localChampion && !tournament.winner_team && !tournament.winner_profile && (
+          <div className="mt-4 space-y-2">
+            <div className="rounded-md border border-accent/40 bg-accent/10 px-4 py-3 font-display text-sm font-bold tracking-wider text-accent">
+              Champion: {localChampion.code} {localChampion.name}
+            </div>
+            {localConsolation && (
+              <div className="rounded-md border border-accent-2/40 bg-accent-2/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent-2">
+                Consolation: {localConsolation.code} {localConsolation.name}
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       <StreamPanel tournament={tournament} embedUrl={streamEmbedUrl} />
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[1.45fr_0.85fr]">
         <div className="grid gap-4">
-          {rounds.length === 0 ? (
+          {localPartnerReady ? (
+            localRounds.map(([roundNo, roundMatches]) => (
+              <section key={roundNo} className="panel p-5">
+                <div className="mb-3 font-display text-sm font-bold tracking-wider text-ink-dim">
+                  {localRoundTitle(roundNo, roundMatches, localMode)}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {roundMatches.map((match) => (
+                    <LocalPartnerLiveMatchCard
+                      key={match.id}
+                      match={match}
+                      allMatches={localPartnerState?.matches ?? []}
+                      state={localPartnerState ?? {}}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))
+          ) : rounds.length === 0 ? (
             <div className="panel p-8 text-center text-sm text-ink-dim">BEYLIVE has not started yet.</div>
           ) : (
             rounds.map(([roundNo, roundMatches]) => (
@@ -250,12 +447,12 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
                 </tr>
               </thead>
               <tbody>
-                {standings.map((row) => (
+                {displayStandings.map((row) => (
                   <tr key={row.id} className="border-t border-edge/60">
                     <td className="py-1.5 pr-2 font-display text-accent">{row.event_id}</td>
                     <td className="py-1.5 pr-2">
                       <div className="text-ink">{row.name}</div>
-                      <div className="text-[10px] text-ink-dim">{row.player_code}</div>
+                      <div className="text-[10px] text-ink-dim">{row.sub}</div>
                     </td>
                     <td className="py-1.5 pr-2 text-right text-ink-dim">{row.wins}-{row.losses}</td>
                     <td className={`py-1.5 text-right font-semibold ${row.diff > 0 ? "text-accent" : row.diff < 0 ? "text-atk" : "text-ink-dim"}`}>
@@ -270,7 +467,19 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
             <div className="font-display text-xs font-bold tracking-wider text-ink-dim">
               {teamMode ? "Team IDs" : "Player IDs"}
             </div>
-            {teamMode ? (
+            {localPartnerReady ? (
+              <ol className="mt-2 space-y-1 text-xs text-ink-dim">
+                {localTeams.map((team) => (
+                  <li key={team.id} className="rounded bg-panel px-2 py-1">
+                    <div className="flex justify-between gap-2">
+                      <span className="text-ink">{team.name}</span>
+                      <span className="font-mono text-accent-2">{team.code}</span>
+                    </div>
+                    <div className="mt-0.5 text-[10px] text-ink-dim">{team.members.join(" / ")}</div>
+                  </li>
+                ))}
+              </ol>
+            ) : teamMode ? (
               <ol className="mt-2 space-y-1 text-xs text-ink-dim">
                 {teams.map((team) => (
                   <li key={team.id} className="rounded bg-panel px-2 py-1">

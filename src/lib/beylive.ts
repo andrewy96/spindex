@@ -267,7 +267,8 @@ export function findBeyliveTeamByScan(teams: BeyliveTeam[], raw: string): Beyliv
     .replace(/^beylive:team:/i, "")
     .replace(/^spindex:team:/i, "")
     .replace(/^#/, "")
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/^to(?=\d)/, "t0");
 
   if (!value) return null;
 
