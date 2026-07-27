@@ -298,6 +298,9 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
                   <Link href={`/${locale}/tournaments/${item.id}`} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:border-accent/60">
                     {t.view}
                   </Link>
+                  <Link href={`/${locale}/tournaments/${item.id}/live`} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
+                    BEYLIVE
+                  </Link>
                   <button onClick={() => copyShareLink(item.id)} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent-2 transition hover:border-accent-2/60">
                     {copiedId === item.id ? t.copied : t.shareLink}
                   </button>

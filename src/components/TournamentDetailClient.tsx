@@ -186,10 +186,18 @@ export default function TournamentDetailClient({
         <button onClick={copyShareLink} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-accent-2 transition hover:border-accent-2/60">
           {copied ? t.copied : t.shareLink}
         </button>
+        <Link href={`/${locale}/tournaments/${item.id}/live`} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
+          BEYLIVE
+        </Link>
         {isHost && (
-          <button onClick={() => setEditing(!editing)} className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110">
-            {editing ? t.cancel : t.edit}
-          </button>
+          <>
+            <Link href={`/${locale}/tournaments/${item.id}/control`} className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110">
+              BEYLIVE Control
+            </Link>
+            <button onClick={() => setEditing(!editing)} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
+              {editing ? t.cancel : t.edit}
+            </button>
+          </>
         )}
       </div>
 
@@ -299,6 +307,9 @@ export default function TournamentDetailClient({
                 {joined.map((p, i) => (
                   <li key={p.user_id} className="rounded bg-panel px-2 py-1">
                     #{p.seed ?? i + 1} {profileDisplayName(p.profile)}
+                    <span className="ml-2 font-mono text-[10px] text-accent-2">
+                      {p.profile?.player_code ?? ""}
+                    </span>
                   </li>
                 ))}
               </ol>

@@ -7,6 +7,8 @@ import { Dict, Locale } from "@/i18n";
 import { useAuth } from "@/lib/auth";
 import { supabase, Match, MY_CITIES, Profile, ProfilePrivate, Round } from "@/lib/supabase";
 import { profileDisplayName } from "@/lib/profileName";
+import { beylivePlayerCode, beyliveQrValue } from "@/lib/beylive";
+import QrCodeBadge from "./QrCodeBadge";
 
 const FINISH_COLOR: Record<string, string> = {
   spin: "var(--color-sta)",
@@ -114,6 +116,18 @@ export function ProfileHeader({
         <StatCard label={dict.battle.wins} value={p.wins} />
         <StatCard label={dict.battle.losses} value={p.losses} />
         <StatCard label={dict.battle.winRate} value={`${rate}%`} />
+      </div>
+      <div className="panel mt-4 flex flex-wrap items-center justify-between gap-4 p-4">
+        <div>
+          <div className="font-display text-xs font-bold tracking-[0.28em] text-accent">
+            BEYLIVE PLAYER ID
+          </div>
+          <div className="mt-1 font-mono text-xl font-bold text-ink">{beylivePlayerCode(p)}</div>
+          <p className="mt-1 text-xs text-ink-dim">
+            Show this QR at tournament check-in or to a judge using phone camera scan.
+          </p>
+        </div>
+        <QrCodeBadge value={beyliveQrValue(p)} label={beylivePlayerCode(p)} />
       </div>
     </div>
   );

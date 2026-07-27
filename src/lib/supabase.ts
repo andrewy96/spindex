@@ -13,6 +13,7 @@ export interface Profile {
   display_name: string;
   avatar_url: string | null;
   city: string | null;
+  player_code: string | null;
   stars: number;
   wins: number;
   losses: number;
@@ -124,6 +125,26 @@ export interface TournamentPlayer {
   profile?: Profile;
 }
 
+export interface BeyliveTeamMember {
+  tournament_id: string;
+  team_id: string;
+  user_id: string;
+  slot_no: number;
+  created_at: string;
+  profile?: Profile;
+}
+
+export interface BeyliveTeam {
+  id: string;
+  tournament_id: string;
+  team_no: number;
+  team_code: string;
+  name: string;
+  seed: number | null;
+  created_at: string;
+  members?: BeyliveTeamMember[];
+}
+
 export interface CommunityTournament {
   id: string;
   host: string;
@@ -133,16 +154,84 @@ export interface CommunityTournament {
   starts_at: string;
   format: TournamentFormat;
   max_players: number;
+  live_enabled: boolean;
+  current_round: number | null;
+  target_score: number;
+  winner_id: string | null;
+  winner_team_id: string | null;
   note: string | null;
   status: "open" | "started" | "completed" | "cancelled";
   created_at: string;
   host_profile?: Profile;
+  winner_profile?: Profile | null;
+  winner_team?: BeyliveTeam | null;
   players?: TournamentPlayer[];
+  teams?: BeyliveTeam[];
+}
+
+export type BeyliveBracket = "main" | "losers" | "grand" | "leaderboard";
+export type BeyliveMatchStatus = "scheduled" | "live" | "completed" | "cancelled" | "bye";
+export type BeylivePlayerResult = "pending" | "win" | "loss";
+
+export interface BeyliveJudge {
+  tournament_id: string;
+  user_id: string;
+  role: "host" | "judge" | "scorer";
+  created_at: string;
+  profile?: Profile;
+}
+
+export interface BeyliveMatchPlayer {
+  match_id: string;
+  user_id: string;
+  team_id: string | null;
+  slot_no: number;
+  score: number;
+  result: BeylivePlayerResult;
+  placement: number | null;
+  profile?: Profile;
+  team?: BeyliveTeam | null;
+}
+
+export interface BeyliveMatchRound {
+  id: number;
+  match_id: string;
+  user_id: string;
+  team_id: string | null;
+  finish: Finish;
+  pts: number;
+  created_by: string;
+  created_at: string;
+  profile?: Profile;
+}
+
+export interface BeyliveMatch {
+  id: string;
+  tournament_id: string;
+  round_no: number;
+  bracket: BeyliveBracket;
+  match_no: number;
+  table_no: number | null;
+  target_score: number;
+  status: BeyliveMatchStatus;
+  winner_id: string | null;
+  winner_team_id: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  players?: BeyliveMatchPlayer[];
+  rounds?: BeyliveMatchRound[];
 }
 
 /** Select for matches with both player profiles joined. */
 export const MATCH_SELECT =
   "*, p1_profile:profiles!matches_p1_fkey(*), p2_profile:profiles!matches_p2_fkey(*)";
+
+export const TOURNAMENT_SELECT =
+  "*, host_profile:profiles!tournaments_host_fkey(*), winner_profile:profiles!tournaments_winner_id_fkey(*), winner_team:beylive_teams!tournaments_winner_team_id_fkey(*, members:beylive_team_members!beylive_team_members_team_id_fkey(*, profile:profiles!beylive_team_members_user_id_fkey(*))), players:tournament_players(*, profile:profiles!tournament_players_user_id_fkey(*)), teams:beylive_teams!beylive_teams_tournament_id_fkey(*, members:beylive_team_members!beylive_team_members_team_id_fkey(*, profile:profiles!beylive_team_members_user_id_fkey(*)))";
+
+export const BEYLIVE_MATCH_SELECT =
+  "*, players:beylive_match_players(*, profile:profiles!beylive_match_players_user_id_fkey(*), team:beylive_teams!beylive_match_players_team_id_fkey(*, members:beylive_team_members!beylive_team_members_team_id_fkey(*, profile:profiles!beylive_team_members_user_id_fkey(*)))), rounds:beylive_match_rounds(*, profile:profiles!beylive_match_rounds_user_id_fkey(*), team:beylive_teams!beylive_match_rounds_team_id_fkey(*))";
 
 export const FINISH_POINTS: Record<Finish, number> = {
   spin: 1,
