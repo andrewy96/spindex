@@ -152,37 +152,64 @@ function LocalPartnerLiveMatchCard({
   );
 }
 
-function StreamPanel({ tournament, embedUrl }: { tournament: CommunityTournament; embedUrl: string | null }) {
-  if (!tournament.stream_enabled || !tournament.stream_url) return null;
+interface StreamFeed {
+  key: string;
+  label: string;
+  title: string;
+  url: string | null;
+}
+
+function StreamPanel({ feeds, hostName }: { feeds: StreamFeed[]; hostName: string }) {
+  if (feeds.length === 0) return null;
 
   return (
     <section className="panel mt-4 overflow-hidden p-0">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-edge bg-panel px-4 py-3">
         <div>
-          <div className="font-display text-[10px] font-bold tracking-[0.24em] text-accent">LIVE STREAM</div>
+          <div className="font-display text-[10px] font-bold tracking-[0.24em] text-accent">LIVE STREAMS</div>
           <div className="mt-0.5 text-sm font-semibold text-ink">
-            {tournament.stream_title || "BEYLIVE live feed"}
+            {feeds.length > 1 ? "Stadium feeds" : feeds[0].title}
           </div>
         </div>
         <span className="rounded-full bg-accent/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-accent">
-          On air
+          {feeds.length} on air
         </span>
       </div>
-      <div className="aspect-video bg-black">
-        {embedUrl ? (
-          <iframe
-            src={embedUrl}
-            title={tournament.stream_title || "BEYLIVE live stream"}
-            allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-            allowFullScreen
-            referrerPolicy="strict-origin-when-cross-origin"
-            className="h-full w-full"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-ink-dim">
-            Stream unavailable
-          </div>
-        )}
+      <div className={`grid gap-px bg-edge ${feeds.length > 1 ? "lg:grid-cols-2" : ""}`}>
+        {feeds.map((feed) => {
+          const embedUrl = beyliveStreamEmbedUrl(feed.url, hostName);
+          return (
+            <div key={feed.key} className="bg-black">
+              <div className="flex items-center justify-between gap-2 bg-panel px-3 py-2">
+                <div className="min-w-0">
+                  <div className="font-display text-[10px] font-bold uppercase tracking-wider text-accent">
+                    {feed.label}
+                  </div>
+                  <div className="truncate text-xs font-semibold text-ink">{feed.title}</div>
+                </div>
+                <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-accent">
+                  Live
+                </span>
+              </div>
+              <div className="aspect-video bg-black">
+                {embedUrl ? (
+                  <iframe
+                    src={embedUrl}
+                    title={feed.title}
+                    allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+                    allowFullScreen
+                    referrerPolicy="strict-origin-when-cross-origin"
+                    className="h-full w-full"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center px-4 text-center text-sm text-ink-dim">
+                    Stream unavailable
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -298,10 +325,36 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
 
   const dbStandings = useMemo(() => beyliveStandings(tournament, matches), [matches, tournament]);
   const rounds = useMemo(() => groupByRound(matches), [matches]);
-  const streamEmbedUrl = useMemo(
-    () => beyliveStreamEmbedUrl(tournament?.stream_enabled ? tournament.stream_url : null, hostName),
-    [hostName, tournament?.stream_enabled, tournament?.stream_url],
-  );
+  const streamFeeds = useMemo<StreamFeed[]>(() => {
+    if (!tournament) return [];
+    const stadiumFeeds = [
+      {
+        key: "stadium1",
+        label: "Stadium 1",
+        title: tournament.stadium1_stream_title || "Stadium 1",
+        url: tournament.stadium1_stream_enabled ? tournament.stadium1_stream_url : null,
+      },
+      {
+        key: "stadium2",
+        label: "Stadium 2",
+        title: tournament.stadium2_stream_title || "Stadium 2",
+        url: tournament.stadium2_stream_enabled ? tournament.stadium2_stream_url : null,
+      },
+    ].filter((feed) => !!feed.url);
+
+    if (stadiumFeeds.length > 0) return stadiumFeeds;
+    if (tournament.stream_enabled && tournament.stream_url) {
+      return [
+        {
+          key: "event",
+          label: "Event feed",
+          title: tournament.stream_title || "BEYLIVE live feed",
+          url: tournament.stream_url,
+        },
+      ];
+    }
+    return [];
+  }, [tournament]);
   const localPartnerReady = isBeyliveTeamTournament(tournament) && matches.length === 0 && isLocalPartnerLive(localPartnerState);
   const localMode = localPartnerMode(localPartnerState);
   const localRounds = useMemo(() => localPartnerGroupedRounds(localPartnerState), [localPartnerState]);
@@ -392,7 +445,7 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
         )}
       </section>
 
-      <StreamPanel tournament={tournament} embedUrl={streamEmbedUrl} />
+      <StreamPanel feeds={streamFeeds} hostName={hostName} />
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[1.45fr_0.85fr]">
         <div className="grid gap-4">

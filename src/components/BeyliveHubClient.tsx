@@ -14,6 +14,13 @@ function fmtWhen(iso: string, locale: Locale) {
   });
 }
 
+function streamCount(item: CommunityTournament) {
+  return [
+    item.stadium1_stream_enabled && item.stadium1_stream_url,
+    item.stadium2_stream_enabled && item.stadium2_stream_url,
+  ].filter(Boolean).length || (item.stream_enabled && item.stream_url ? 1 : 0);
+}
+
 export default function BeyliveHubClient({ locale }: { locale: Locale }) {
   const [items, setItems] = useState<CommunityTournament[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,8 +90,10 @@ export default function BeyliveHubClient({ locale }: { locale: Locale }) {
                 <span className="rounded bg-panel px-2 py-0.5 text-accent-2">{beyliveFormatLabel(item.format)}</span>
                 <span className="rounded bg-panel px-2 py-0.5 text-ink-dim">Round {item.current_round ?? "-"}</span>
                 <span className="rounded bg-panel px-2 py-0.5 text-ink-dim">First to {item.target_score}</span>
-                {item.stream_enabled && item.stream_url && (
-                  <span className="rounded bg-accent/10 px-2 py-0.5 text-accent">Stream</span>
+                {streamCount(item) > 0 && (
+                  <span className="rounded bg-accent/10 px-2 py-0.5 text-accent">
+                    {streamCount(item) > 1 ? `${streamCount(item)} streams` : "Stream"}
+                  </span>
                 )}
               </div>
               {(item.winner_team || item.winner_profile) && (

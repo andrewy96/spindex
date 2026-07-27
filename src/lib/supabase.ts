@@ -158,6 +158,12 @@ export interface CommunityTournament {
   stream_url: string | null;
   stream_title: string | null;
   stream_enabled: boolean;
+  stadium1_stream_url: string | null;
+  stadium1_stream_title: string | null;
+  stadium1_stream_enabled: boolean;
+  stadium2_stream_url: string | null;
+  stadium2_stream_title: string | null;
+  stadium2_stream_enabled: boolean;
   current_round: number | null;
   target_score: number;
   winner_id: string | null;

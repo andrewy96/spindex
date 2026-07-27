@@ -334,6 +334,12 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
   const [streamUrl, setStreamUrl] = useState("");
   const [streamTitle, setStreamTitle] = useState("");
   const [streamEnabled, setStreamEnabled] = useState(false);
+  const [stadium1StreamUrl, setStadium1StreamUrl] = useState("");
+  const [stadium1StreamTitle, setStadium1StreamTitle] = useState("");
+  const [stadium1StreamEnabled, setStadium1StreamEnabled] = useState(false);
+  const [stadium2StreamUrl, setStadium2StreamUrl] = useState("");
+  const [stadium2StreamTitle, setStadium2StreamTitle] = useState("");
+  const [stadium2StreamEnabled, setStadium2StreamEnabled] = useState(false);
   const [streamBusy, setStreamBusy] = useState(false);
   const [streamSaved, setStreamSaved] = useState(false);
   const partnerCacheKey = useMemo(() => `spindex.partner-battle.${id}`, [id]);
@@ -363,8 +369,25 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     setStreamUrl(tournament.stream_url ?? "");
     setStreamTitle(tournament.stream_title ?? "");
     setStreamEnabled(Boolean(tournament.stream_enabled && tournament.stream_url));
+    setStadium1StreamUrl(tournament.stadium1_stream_url ?? "");
+    setStadium1StreamTitle(tournament.stadium1_stream_title ?? "");
+    setStadium1StreamEnabled(Boolean(tournament.stadium1_stream_enabled && tournament.stadium1_stream_url));
+    setStadium2StreamUrl(tournament.stadium2_stream_url ?? "");
+    setStadium2StreamTitle(tournament.stadium2_stream_title ?? "");
+    setStadium2StreamEnabled(Boolean(tournament.stadium2_stream_enabled && tournament.stadium2_stream_url));
     setStreamSaved(false);
-  }, [tournament?.id, tournament?.stream_enabled, tournament?.stream_title, tournament?.stream_url]);
+  }, [
+    tournament?.id,
+    tournament?.stadium1_stream_enabled,
+    tournament?.stadium1_stream_title,
+    tournament?.stadium1_stream_url,
+    tournament?.stadium2_stream_enabled,
+    tournament?.stadium2_stream_title,
+    tournament?.stadium2_stream_url,
+    tournament?.stream_enabled,
+    tournament?.stream_title,
+    tournament?.stream_url,
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -575,6 +598,10 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
 
     const nextUrl = streamUrl.trim();
     const nextTitle = streamTitle.trim();
+    const nextStadium1Url = stadium1StreamUrl.trim();
+    const nextStadium1Title = stadium1StreamTitle.trim();
+    const nextStadium2Url = stadium2StreamUrl.trim();
+    const nextStadium2Title = stadium2StreamTitle.trim();
     setStreamBusy(true);
     setStreamSaved(false);
     setError(null);
@@ -585,6 +612,12 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
         stream_url: nextUrl || null,
         stream_title: nextTitle || null,
         stream_enabled: streamEnabled && !!nextUrl,
+        stadium1_stream_url: nextStadium1Url || null,
+        stadium1_stream_title: nextStadium1Title || null,
+        stadium1_stream_enabled: stadium1StreamEnabled && !!nextStadium1Url,
+        stadium2_stream_url: nextStadium2Url || null,
+        stadium2_stream_title: nextStadium2Title || null,
+        stadium2_stream_enabled: stadium2StreamEnabled && !!nextStadium2Url,
       })
       .eq("id", tournament.id);
 
@@ -660,34 +693,9 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
             <div className="rounded-md border border-edge bg-bg/80 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="font-display text-xs font-bold tracking-[0.2em] text-accent-2">LIVE STREAM</div>
-                  <div className="mt-0.5 text-xs text-ink-dim">YouTube Live, Twitch, Facebook, or Vimeo URL</div>
+                  <div className="font-display text-xs font-bold tracking-[0.2em] text-accent-2">LIVE STREAMS</div>
+                  <div className="mt-0.5 text-xs text-ink-dim">YouTube Live, Twitch, Facebook, or Vimeo URLs</div>
                 </div>
-                <label className="flex items-center gap-2 text-xs font-semibold text-ink">
-                  <input
-                    type="checkbox"
-                    checked={streamEnabled}
-                    onChange={(event) => setStreamEnabled(event.target.checked)}
-                    className="h-4 w-4 accent-accent"
-                  />
-                  On air
-                </label>
-              </div>
-              <div className="mt-3 grid gap-2 md:grid-cols-[0.75fr_1.35fr_auto]">
-                <input
-                  value={streamTitle}
-                  onChange={(event) => setStreamTitle(event.target.value)}
-                  maxLength={80}
-                  placeholder="Stream title"
-                  className="rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none focus:border-accent"
-                />
-                <input
-                  value={streamUrl}
-                  onChange={(event) => setStreamUrl(event.target.value)}
-                  maxLength={500}
-                  placeholder="Stream URL"
-                  className="rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none focus:border-accent"
-                />
                 <button
                   onClick={saveStream}
                   disabled={streamBusy}
@@ -695,6 +703,102 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                 >
                   {streamBusy ? "Saving..." : "Save stream"}
                 </button>
+              </div>
+              <div className="mt-3 grid gap-3">
+                <div className="rounded-md border border-edge bg-panel/60 p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="font-display text-[10px] font-bold uppercase tracking-wider text-ink-dim">Event feed</div>
+                    <label className="flex items-center gap-2 text-xs font-semibold text-ink">
+                      <input
+                        type="checkbox"
+                        checked={streamEnabled}
+                        onChange={(event) => setStreamEnabled(event.target.checked)}
+                        className="h-4 w-4 accent-accent"
+                      />
+                      On air
+                    </label>
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-[0.75fr_1.35fr]">
+                    <input
+                      value={streamTitle}
+                      onChange={(event) => setStreamTitle(event.target.value)}
+                      maxLength={80}
+                      placeholder="Event stream title"
+                      className="rounded-md border border-edge bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
+                    />
+                    <input
+                      value={streamUrl}
+                      onChange={(event) => setStreamUrl(event.target.value)}
+                      maxLength={500}
+                      placeholder="Event stream URL"
+                      className="rounded-md border border-edge bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <div className="rounded-md border border-edge bg-panel/60 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <div className="font-display text-[10px] font-bold uppercase tracking-wider text-accent">Stadium 1</div>
+                      <label className="flex items-center gap-2 text-xs font-semibold text-ink">
+                        <input
+                          type="checkbox"
+                          checked={stadium1StreamEnabled}
+                          onChange={(event) => setStadium1StreamEnabled(event.target.checked)}
+                          className="h-4 w-4 accent-accent"
+                        />
+                        On air
+                      </label>
+                    </div>
+                    <div className="grid gap-2">
+                      <input
+                        value={stadium1StreamTitle}
+                        onChange={(event) => setStadium1StreamTitle(event.target.value)}
+                        maxLength={80}
+                        placeholder="Stadium 1 title"
+                        className="rounded-md border border-edge bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
+                      />
+                      <input
+                        value={stadium1StreamUrl}
+                        onChange={(event) => setStadium1StreamUrl(event.target.value)}
+                        maxLength={500}
+                        placeholder="Stadium 1 stream URL"
+                        className="rounded-md border border-edge bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-md border border-edge bg-panel/60 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <div className="font-display text-[10px] font-bold uppercase tracking-wider text-accent">Stadium 2</div>
+                      <label className="flex items-center gap-2 text-xs font-semibold text-ink">
+                        <input
+                          type="checkbox"
+                          checked={stadium2StreamEnabled}
+                          onChange={(event) => setStadium2StreamEnabled(event.target.checked)}
+                          className="h-4 w-4 accent-accent"
+                        />
+                        On air
+                      </label>
+                    </div>
+                    <div className="grid gap-2">
+                      <input
+                        value={stadium2StreamTitle}
+                        onChange={(event) => setStadium2StreamTitle(event.target.value)}
+                        maxLength={80}
+                        placeholder="Stadium 2 title"
+                        className="rounded-md border border-edge bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
+                      />
+                      <input
+                        value={stadium2StreamUrl}
+                        onChange={(event) => setStadium2StreamUrl(event.target.value)}
+                        maxLength={500}
+                        placeholder="Stadium 2 stream URL"
+                        className="rounded-md border border-edge bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
               {streamSaved && <div className="mt-2 text-xs font-semibold text-accent">Stream saved.</div>}
             </div>
