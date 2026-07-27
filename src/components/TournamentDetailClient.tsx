@@ -333,7 +333,7 @@ export default function TournamentDetailClient({
           <div className="mt-6">
             <PartnerBattleRunner
               locale={locale}
-              storageKey={`spindex.partner-battle.${item.id}`}
+              tournamentId={item.id}
               seedNames={joined.map((p) => profileDisplayName(p.profile))}
               canManage={isHost}
             />

@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Locale } from "@/i18n";
 import SpinWheel from "@/components/SpinWheel";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth";
 import {
   BattleMode,
   champion,
@@ -36,7 +38,7 @@ const L = {
   en: {
     heading: "Partner Battle",
     intro: "Random 2-blader teams · first to 7.",
-    viewerNote: "The host runs the partner draw and scoring live at the venue.",
+    viewerNote: "The host is setting up the battle — live results appear here once it starts.",
     reset: "Reset draw",
     resetConfirm: "Reset the partner draw? Teams and scores will be cleared.",
     rosterTitle: "Bladers",
@@ -105,7 +107,7 @@ const L = {
   zh: {
     heading: "双人组队赛",
     intro: "随机 2 人组队 · 先得 7 分。",
-    viewerNote: "由主办方在现场进行抽签与计分。",
+    viewerNote: "主办方正在设置对战 — 开始后即可在此实时查看。",
     reset: "重置抽签",
     resetConfirm: "确定重置搭档抽签？队伍和比分将被清空。",
     rosterTitle: "玩家",
@@ -180,16 +182,18 @@ const L = {
  */
 export default function PartnerBattleRunner({
   locale,
-  storageKey,
+  tournamentId,
   seedNames,
   canManage,
 }: {
   locale: Locale;
-  storageKey: string;
+  tournamentId: string;
   seedNames: string[];
   canManage: boolean;
 }) {
   const t = L[locale] ?? L.en;
+  const { profile } = useAuth();
+  const cacheKey = `spindex.partner-battle.${tournamentId}`;
 
   const [phase, setPhase] = useState<Phase>("roster");
   const [mode, setMode] = useState<BattleMode>("league");
@@ -202,37 +206,110 @@ export default function PartnerBattleRunner({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const s = JSON.parse(raw) as PersistState;
-        setPhase(s.phase ?? "roster");
-        setMode(s.mode ?? "league");
-        setPlayers(s.players ?? []);
-        setDraw(s.draw ?? []);
-        setTeams(s.teams ?? []);
-        setMatches(s.matches ?? []);
-        setRound(s.round ?? 1);
-      } else {
-        setPlayers(seedNames.map((name) => ({ id: uid("p"), name })));
-      }
-    } catch {
-      /* ignore corrupt state */
-    }
-    setLoaded(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey]);
+  // A ref-guarded setter so state we receive from the server doesn't echo back
+  // out as a save (which would loop between synced devices).
+  const remoteApplyRef = useRef(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const applyState = useCallback((s: Partial<PersistState>) => {
+    remoteApplyRef.current = true;
+    setPhase(s.phase ?? "roster");
+    setMode(s.mode ?? "league");
+    setPlayers(s.players ?? []);
+    setDraw(s.draw ?? []);
+    setTeams(s.teams ?? []);
+    setMatches(s.matches ?? []);
+    setRound(s.round ?? 1);
+  }, []);
+
+  // Load: local cache for an instant paint, then the authoritative server row.
   useEffect(() => {
-    if (!loaded || !canManage) return;
+    let active = true;
+    (async () => {
+      try {
+        const raw = localStorage.getItem(cacheKey);
+        if (raw) applyState(JSON.parse(raw) as PersistState);
+      } catch {
+        /* ignore corrupt cache */
+      }
+      let hadState = false;
+      if (supabase) {
+        const { data } = await supabase
+          .from("partner_battles")
+          .select("state")
+          .eq("tournament_id", tournamentId)
+          .maybeSingle();
+        if (active && data?.state) {
+          applyState(data.state as PersistState);
+          hadState = true;
+        }
+      }
+      if (active) {
+        if (!hadState && !localStorage.getItem(cacheKey)) {
+          setPlayers(seedNames.map((name) => ({ id: uid("p"), name })));
+        }
+        setLoaded(true);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tournamentId]);
+
+  // Save: the host writes the whole state to cache + server (debounced). The
+  // guard skips the write that would merely echo a just-received server state.
+  useEffect(() => {
+    if (!loaded) return;
+    if (remoteApplyRef.current) {
+      remoteApplyRef.current = false;
+      return;
+    }
+    if (!canManage) return;
     const s: PersistState = { phase, mode, players, draw, teams, matches, round };
     try {
-      localStorage.setItem(storageKey, JSON.stringify(s));
+      localStorage.setItem(cacheKey, JSON.stringify(s));
     } catch {
       /* storage unavailable — non-fatal */
     }
-  }, [loaded, canManage, storageKey, phase, mode, players, draw, teams, matches, round]);
+    if (!supabase) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      supabase!
+        .from("partner_battles")
+        .upsert({
+          tournament_id: tournamentId,
+          state: s,
+          updated_by: profile?.id ?? null,
+          updated_at: new Date().toISOString(),
+        })
+        .then(() => {});
+    }, 350);
+  }, [loaded, canManage, tournamentId, cacheKey, phase, mode, players, draw, teams, matches, round, profile?.id]);
+
+  // Realtime: apply state pushed by any other device (the guard stops an echo).
+  useEffect(() => {
+    if (!supabase) return;
+    const channel = supabase
+      .channel(`partner_battles:${tournamentId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "partner_battles",
+          filter: `tournament_id=eq.${tournamentId}`,
+        },
+        (payload) => {
+          const s = (payload.new as { state?: PersistState } | null)?.state;
+          if (s) applyState(s);
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase?.removeChannel(channel);
+    };
+  }, [tournamentId, applyState]);
 
   const nameOf = useMemo(() => {
     const map = new Map(players.map((p) => [p.id, p.name]));
@@ -351,7 +428,7 @@ export default function PartnerBattleRunner({
           <span className="mr-2 font-display text-xs font-bold text-accent-2">{teamCode(m.teams[0])}</span>
           {teamLabel(m.teams[0])} — <span className="text-accent-2">{t.bye}</span>
         </p>
-      ) : m.winner !== null && editingId !== m.id ? (
+      ) : m.winner !== null && (!canManage || editingId !== m.id) ? (
         <div>
           <div className="grid gap-1">
             {m.teams.map((tid) => (
@@ -369,14 +446,16 @@ export default function PartnerBattleRunner({
               </div>
             ))}
           </div>
-          <button
-            onClick={() => setEditingId(m.id)}
-            className="mt-1.5 text-[10px] font-semibold text-ink-dim underline decoration-dotted transition hover:text-accent-2"
-          >
-            {t.edit}
-          </button>
+          {canManage && (
+            <button
+              onClick={() => setEditingId(m.id)}
+              className="mt-1.5 text-[10px] font-semibold text-ink-dim underline decoration-dotted transition hover:text-accent-2"
+            >
+              {t.edit}
+            </button>
+          )}
         </div>
-      ) : (
+      ) : canManage ? (
         <MatchScoreForm
           match={m}
           teamCode={teamCode}
@@ -388,6 +467,23 @@ export default function PartnerBattleRunner({
           tieError={t.scoreTie}
           vs={t.vs}
         />
+      ) : (
+        <div className="grid gap-1">
+          {m.teams.map((tid, i) => (
+            <div key={tid}>
+              {i === 1 && (
+                <div className="my-0.5 text-center text-[10px] font-bold text-ink-dim">{t.vs}</div>
+              )}
+              <div className="flex items-center justify-between rounded px-2 py-1 text-sm text-ink-dim">
+                <span>
+                  <span className="mr-2 font-display text-[10px] font-bold text-accent-2">{teamCode(tid)}</span>
+                  {teamLabel(tid)}
+                </span>
+                <span>—</span>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -404,7 +500,8 @@ export default function PartnerBattleRunner({
 
   if (!loaded) return null;
 
-  if (!canManage) {
+  // Viewers watch the battle live (read-only). Before it starts, a waiting note.
+  if (!canManage && phase !== "battle") {
     return (
       <div className="panel p-5">
         <div className="flex items-center justify-between gap-2">
@@ -437,7 +534,7 @@ export default function PartnerBattleRunner({
                 {statusLabel}
               </span>
             )}
-            {phase !== "roster" && (
+            {canManage && phase !== "roster" && (
               <button
                 onClick={reset}
                 className="clip-x border border-edge bg-panel-2 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink"

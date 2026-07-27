@@ -193,12 +193,68 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
   }, [load]);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(`spindex.partner-battle.${id}`);
-      setLocalPartnerState(raw ? (JSON.parse(raw) as LocalPartnerState) : null);
-    } catch {
-      setLocalPartnerState(null);
+    let active = true;
+    const cacheKey = `spindex.partner-battle.${id}`;
+
+    const applyState = (state: LocalPartnerState | null) => {
+      if (!active) return;
+      setLocalPartnerState(state);
+      if (!state) return;
+      try {
+        window.localStorage.setItem(cacheKey, JSON.stringify(state));
+      } catch {
+        /* cache unavailable */
+      }
+    };
+
+    const loadPartnerState = async () => {
+      let next: LocalPartnerState | null = null;
+      try {
+        const raw = window.localStorage.getItem(cacheKey);
+        if (raw) next = JSON.parse(raw) as LocalPartnerState;
+      } catch {
+        next = null;
+      }
+      applyState(next);
+
+      if (!supabase) return;
+      const { data } = await supabase
+        .from("partner_battles")
+        .select("state")
+        .eq("tournament_id", id)
+        .maybeSingle();
+      if (data?.state) applyState(data.state as LocalPartnerState);
+    };
+
+    loadPartnerState();
+
+    if (!supabase) {
+      return () => {
+        active = false;
+      };
     }
+
+    const channel = supabase
+      .channel(`partner-battle-control-${id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "partner_battles",
+          filter: `tournament_id=eq.${id}`,
+        },
+        (payload) => {
+          const state = (payload.new as { state?: LocalPartnerState } | null)?.state;
+          if (state) applyState(state);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase?.removeChannel(channel);
+    };
   }, [id]);
 
   useEffect(() => {
