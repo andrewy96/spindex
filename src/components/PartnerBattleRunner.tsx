@@ -4,8 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Locale } from "@/i18n";
 import SpinWheel from "@/components/SpinWheel";
 import {
+  BattleMode,
   champion,
-  firstSwissRound,
+  consolationChampion,
+  firstRound,
   nextRound,
   PARTNER_WIN_SCORE,
   Player,
@@ -22,6 +24,7 @@ type Phase = "roster" | "draw" | "battle";
 
 interface PersistState {
   phase: Phase;
+  mode: BattleMode;
   players: Player[];
   draw: string[];
   teams: Team[];
@@ -32,7 +35,7 @@ interface PersistState {
 const L = {
   en: {
     heading: "Partner Battle",
-    intro: "Random 2-blader teams · first to 7 · Swiss, top 2 to the final.",
+    intro: "Random 2-blader teams · first to 7.",
     viewerNote: "The host runs the partner draw and scoring live at the venue.",
     reset: "Reset draw",
     resetConfirm: "Reset the partner draw? Teams and scores will be cleared.",
@@ -47,6 +50,11 @@ const L = {
     startDraw: "Start partner draw",
     needFour: "Add at least 4 bladers to run a partner draw",
     oddNote: "Odd number — the last team will have 3 members.",
+    modeTitle: "Battle format",
+    modeSwiss: "Swiss",
+    modeSwissDesc: "Pair on similar records each round, then top 2 play the final.",
+    modeLeague: "League",
+    modeLeagueDesc: "Round-robin, then top half play off for the title, bottom half for a consolation prize.",
     drawTitle: "Partner Draw",
     drawHint: "Spin to draw each blader. Every two draws forms a team.",
     spin: "Spin",
@@ -54,13 +62,17 @@ const L = {
     forming: "forming",
     teamsFormed: "Teams",
     drawDone: "All partners drawn",
-    startBattle: "Start Swiss battle",
+    startBattle: "Start battle",
     redraw: "Redraw partners",
     autoLast: "Auto-draw the last two",
-    battleTitle: "Swiss Battle",
+    battleTitle: "Battle",
     swissOf: "Swiss · {n} rounds",
+    leagueOf: "League + knockout playoffs",
     round: "Round {n}",
+    leagueRound: "League · Round {n}",
     grandFinal: "🏆 Grand Final",
+    championship: "🏆 Championship",
+    consolation: "Consolation prize",
     bye: "Bye",
     vs: "vs",
     firstTo: "First to {n}",
@@ -75,13 +87,23 @@ const L = {
     tableDiff: "Diff",
     tablePts: "Pts",
     top2: "Top 2 advance to the final",
+    leagueSplit: "Top half → title · bottom half → consolation",
     champion: "Champion",
+    consChampion: "Consolation winner",
     completed: "Completed",
     inProgress: "In progress",
+    titles: {
+      Semifinal: "Semifinal",
+      Quarterfinal: "Quarterfinal",
+      Final: "Final",
+      "Consolation Final": "Consolation Final",
+      "3rd place": "3rd place",
+      "Consolation 3rd place": "Consolation 3rd place",
+    } as Record<string, string>,
   },
   zh: {
     heading: "双人组队赛",
-    intro: "随机 2 人组队 · 先得 7 分 · 瑞士轮，前 2 名进决赛。",
+    intro: "随机 2 人组队 · 先得 7 分。",
     viewerNote: "由主办方在现场进行抽签与计分。",
     reset: "重置抽签",
     resetConfirm: "确定重置搭档抽签？队伍和比分将被清空。",
@@ -96,6 +118,11 @@ const L = {
     startDraw: "开始搭档抽签",
     needFour: "至少需要 4 名玩家才能抽搭档",
     oddNote: "人数为奇数 — 最后一队将有 3 人。",
+    modeTitle: "对战赛制",
+    modeSwiss: "瑞士轮",
+    modeSwissDesc: "每轮按相近战绩配对，最后前 2 名打决赛。",
+    modeLeague: "联赛",
+    modeLeagueDesc: "循环赛后，上半区争冠军，下半区争安慰奖。",
     drawTitle: "搭档抽签",
     drawHint: "转动转盘抽取玩家，每抽两人组成一队。",
     spin: "转动",
@@ -103,13 +130,17 @@ const L = {
     forming: "组队中",
     teamsFormed: "队伍",
     drawDone: "全部搭档已抽出",
-    startBattle: "开始瑞士轮",
+    startBattle: "开始对战",
     redraw: "重新抽签",
     autoLast: "自动抽最后两人",
-    battleTitle: "瑞士轮对战",
+    battleTitle: "对战",
     swissOf: "瑞士轮 · 共 {n} 轮",
+    leagueOf: "循环赛 + 淘汰赛",
     round: "第 {n} 轮",
+    leagueRound: "循环赛 · 第 {n} 轮",
     grandFinal: "🏆 总决赛",
+    championship: "🏆 冠军赛",
+    consolation: "安慰奖",
     bye: "轮空",
     vs: "对",
     firstTo: "先得 {n} 分",
@@ -124,18 +155,26 @@ const L = {
     tableDiff: "净胜分",
     tablePts: "得分",
     top2: "前 2 名进入决赛",
+    leagueSplit: "上半区争冠 · 下半区争安慰奖",
     champion: "冠军",
+    consChampion: "安慰奖得主",
     completed: "已结束",
     inProgress: "进行中",
+    titles: {
+      Semifinal: "半决赛",
+      Quarterfinal: "四分之一决赛",
+      Final: "决赛",
+      "Consolation Final": "安慰奖决赛",
+      "3rd place": "季军赛",
+      "Consolation 3rd place": "安慰奖季军赛",
+    } as Record<string, string>,
   },
 };
 
 /**
  * Embeddable partner-battle organizer for a community tournament of format
  * "partner". State is host-local (localStorage keyed by tournament id) — a
- * single judge runs the draw and scoring on one device, matching the
- * one-stadium/one-judge event setup. Walk-ins without accounts are added by
- * name; the lineup of registered joiners is offered as a seed.
+ * single judge runs the draw and scoring on one device.
  */
 export default function PartnerBattleRunner({
   locale,
@@ -151,6 +190,7 @@ export default function PartnerBattleRunner({
   const t = L[locale] ?? L.en;
 
   const [phase, setPhase] = useState<Phase>("roster");
+  const [mode, setMode] = useState<BattleMode>("swiss");
   const [players, setPlayers] = useState<Player[]>([]);
   const [draw, setDraw] = useState<string[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -160,13 +200,13 @@ export default function PartnerBattleRunner({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
-  // Restore in-progress state, else seed the roster from the joined lineup.
   useEffect(() => {
     try {
       const raw = localStorage.getItem(storageKey);
       if (raw) {
         const s = JSON.parse(raw) as PersistState;
         setPhase(s.phase ?? "roster");
+        setMode(s.mode ?? "swiss");
         setPlayers(s.players ?? []);
         setDraw(s.draw ?? []);
         setTeams(s.teams ?? []);
@@ -179,19 +219,18 @@ export default function PartnerBattleRunner({
       /* ignore corrupt state */
     }
     setLoaded(true);
-    // Seed only once per storage key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey]);
 
   useEffect(() => {
     if (!loaded || !canManage) return;
-    const s: PersistState = { phase, players, draw, teams, matches, round };
+    const s: PersistState = { phase, mode, players, draw, teams, matches, round };
     try {
       localStorage.setItem(storageKey, JSON.stringify(s));
     } catch {
       /* storage unavailable — non-fatal */
     }
-  }, [loaded, canManage, storageKey, phase, players, draw, teams, matches, round]);
+  }, [loaded, canManage, storageKey, phase, mode, players, draw, teams, matches, round]);
 
   const nameOf = useMemo(() => {
     const map = new Map(players.map((p) => [p.id, p.name]));
@@ -204,10 +243,18 @@ export default function PartnerBattleRunner({
   }, [teams, nameOf]);
 
   const teamIds = useMemo(() => teams.map((tm) => tm.id), [teams]);
-  const rows = useMemo(() => standings(teamIds, matches), [teamIds, matches]);
+  const leagueMatches = useMemo(() => matches.filter((m) => m.stage === "league"), [matches]);
+  const rows = useMemo(
+    () => standings(teamIds, mode === "league" ? leagueMatches : matches),
+    [teamIds, mode, leagueMatches, matches]
+  );
   const champ = useMemo(
-    () => (phase === "battle" ? champion(teamIds, matches, round) : null),
-    [phase, teamIds, matches, round]
+    () => (phase === "battle" ? champion(teamIds, matches, round, mode) : null),
+    [phase, teamIds, matches, round, mode]
+  );
+  const consChamp = useMemo(
+    () => (phase === "battle" && mode === "league" ? consolationChampion(matches) : null),
+    [phase, mode, matches]
   );
   const undrawn = useMemo(() => players.filter((p) => !draw.includes(p.id)), [players, draw]);
   const drawnTeams = useMemo(() => {
@@ -245,7 +292,7 @@ export default function PartnerBattleRunner({
   const startBattle = () => {
     const formed = teamsFromDraw(draw);
     setTeams(formed);
-    setMatches(firstSwissRound(formed.map((tm) => tm.id)));
+    setMatches(firstRound(formed.map((tm) => tm.id), mode));
     setRound(1);
     setPhase("battle");
   };
@@ -260,7 +307,7 @@ export default function PartnerBattleRunner({
       if (next.some((m) => m.round > match.round)) return next;
       const current = next.filter((m) => m.round === match.round);
       if (current.every((m) => m.winner !== null)) {
-        const upcoming = nextRound(teamIds, next, match.round);
+        const upcoming = nextRound(teamIds, next, match.round, mode);
         if (upcoming.length > 0) {
           setRound(match.round + 1);
           return [...next, ...upcoming];
@@ -282,14 +329,70 @@ export default function PartnerBattleRunner({
     setPlayers(seedNames.map((name) => ({ id: uid("p"), name })));
   };
 
-  const maxRound = matches.reduce((m, x) => Math.max(m, x.round), 1);
-  const roundsList = Array.from({ length: maxRound }, (_, i) => i + 1);
   const odd = players.length % 2 === 1;
   const statusLabel = champ ? t.completed : phase === "battle" ? t.inProgress : "";
 
+  // Renders one match card (score form or result), shared across all sections.
+  const matchCard = (m: TeamMatch, showTitle = false) => (
+    <div key={m.id} className="rounded-md border border-edge bg-panel p-3">
+      {showTitle && m.title && (
+        <div className="mb-1.5 font-display text-[10px] font-bold uppercase tracking-wider text-accent-2">
+          {t.titles[m.title] ?? m.title}
+        </div>
+      )}
+      {m.teams.length === 1 ? (
+        <p className="text-sm text-ink-dim">
+          {teamLabel(m.teams[0])} — <span className="text-accent-2">{t.bye}</span>
+        </p>
+      ) : m.winner !== null && editingId !== m.id ? (
+        <div>
+          <div className="grid gap-1">
+            {m.teams.map((tid) => (
+              <div
+                key={tid}
+                className={`flex items-center justify-between rounded px-2 py-1 text-sm ${
+                  m.winner === tid ? "bg-accent/20 font-bold text-accent" : "text-ink-dim/60"
+                }`}
+              >
+                <span className={m.winner === tid ? "" : "line-through"}>{teamLabel(tid)}</span>
+                <span>{m.scores?.[tid] ?? 0}</span>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => setEditingId(m.id)}
+            className="mt-1.5 text-[10px] font-semibold text-ink-dim underline decoration-dotted transition hover:text-accent-2"
+          >
+            {t.edit}
+          </button>
+        </div>
+      ) : (
+        <MatchScoreForm
+          match={m}
+          teamLabel={teamLabel}
+          onConfirm={(scores) => report(m.id, scores)}
+          onCancel={m.winner !== null ? () => setEditingId(null) : undefined}
+          confirmLabel={t.confirmScore}
+          cancelLabel={t.cancel}
+          tieError={t.scoreTie}
+          vs={t.vs}
+        />
+      )}
+    </div>
+  );
+
+  // Swiss round list (swiss + final), league round list, and playoff brackets.
+  const maxRound = matches.reduce((m, x) => Math.max(m, x.round), 1);
+  const swissRounds = Array.from({ length: maxRound }, (_, i) => i + 1);
+  const leagueRoundNos = useMemo(
+    () => [...new Set(leagueMatches.map((m) => m.round))].sort((a, b) => a - b),
+    [leagueMatches]
+  );
+  const champMatches = matches.filter((m) => m.stage === "playoff" && m.bracket === "championship");
+  const consMatches = matches.filter((m) => m.stage === "playoff" && m.bracket === "consolation");
+
   if (!loaded) return null;
 
-  // Non-host viewers only see the summary — the live state is host-local.
   if (!canManage) {
     return (
       <div className="panel p-5">
@@ -417,6 +520,32 @@ export default function PartnerBattleRunner({
             </ol>
           )}
 
+          <div className="mt-6">
+            <div className="font-display text-sm font-bold tracking-wider">{t.modeTitle}</div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {([
+                { key: "swiss" as const, label: t.modeSwiss, desc: t.modeSwissDesc },
+                { key: "league" as const, label: t.modeLeague, desc: t.modeLeagueDesc },
+              ]).map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setMode(opt.key)}
+                  className={`rounded-md border p-3 text-left transition ${
+                    mode === opt.key
+                      ? "border-accent bg-accent/10"
+                      : "border-edge bg-panel hover:border-accent/50"
+                  }`}
+                >
+                  <div className={`text-sm font-semibold ${mode === opt.key ? "text-accent" : "text-ink"}`}>
+                    {opt.label}
+                  </div>
+                  <div className="mt-1 text-xs leading-relaxed text-ink-dim">{opt.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="mt-5">
             <button
               onClick={startDraw}
@@ -514,80 +643,86 @@ export default function PartnerBattleRunner({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-display text-sm font-bold tracking-wider">{t.battleTitle}</h3>
                 <span className="rounded bg-panel px-2 py-0.5 text-[10px] font-semibold text-ink-dim">
-                  {t.swissOf.replace("{n}", String(swissRoundCount(teamIds.length)))}
+                  {mode === "league"
+                    ? t.leagueOf
+                    : t.swissOf.replace("{n}", String(swissRoundCount(teamIds.length)))}
                 </span>
               </div>
-              {champ && (
-                <div className="mt-4 rounded-md border border-accent/40 bg-accent/10 px-4 py-3 font-display text-sm font-bold tracking-wider text-accent">
-                  {t.champion}: {teamLabel(champ)}
+              {(champ || consChamp) && (
+                <div className="mt-4 space-y-2">
+                  {champ && (
+                    <div className="rounded-md border border-accent/40 bg-accent/10 px-4 py-3 font-display text-sm font-bold tracking-wider text-accent">
+                      {t.champion}: {teamLabel(champ)}
+                    </div>
+                  )}
+                  {consChamp && (
+                    <div className="rounded-md border border-accent-2/40 bg-accent-2/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent-2">
+                      {t.consChampion}: {teamLabel(consChamp)}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
-            {roundsList.map((r) => {
-              const roundMatches = matches.filter((m) => m.round === r);
-              if (roundMatches.length === 0) return null;
-              const isFinalRound = roundMatches.some((m) => m.stage === "final");
-              return (
-                <div key={r} className="panel mt-4 p-5">
-                  <div className="font-display text-sm font-bold tracking-wider">
-                    {isFinalRound ? t.grandFinal : t.round.replace("{n}", String(r))}
+            {/* Swiss mode: rounds + grand final */}
+            {mode === "swiss" &&
+              swissRounds.map((r) => {
+                const roundMatches = matches.filter((m) => m.round === r);
+                if (roundMatches.length === 0) return null;
+                const isFinalRound = roundMatches.some((m) => m.stage === "final");
+                return (
+                  <div key={r} className="panel mt-4 p-5">
+                    <div className="font-display text-sm font-bold tracking-wider">
+                      {isFinalRound ? t.grandFinal : t.round.replace("{n}", String(r))}
+                    </div>
+                    <div className="mt-1 text-xs text-ink-dim">
+                      {t.firstTo.replace("{n}", String(PARTNER_WIN_SCORE))}
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {roundMatches.map((m) => matchCard(m))}
+                    </div>
                   </div>
-                  <div className="mt-1 text-xs text-ink-dim">
-                    {t.firstTo.replace("{n}", String(PARTNER_WIN_SCORE))}
+                );
+              })}
+
+            {/* League mode: round-robin then knockout brackets */}
+            {mode === "league" && (
+              <>
+                {leagueRoundNos.map((r) => (
+                  <div key={`lg-${r}`} className="panel mt-4 p-5">
+                    <div className="font-display text-sm font-bold tracking-wider">
+                      {t.leagueRound.replace("{n}", String(r))}
+                    </div>
+                    <div className="mt-1 text-xs text-ink-dim">
+                      {t.firstTo.replace("{n}", String(PARTNER_WIN_SCORE))}
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {leagueMatches.filter((m) => m.round === r).map((m) => matchCard(m))}
+                    </div>
                   </div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    {roundMatches.map((m) => (
-                      <div key={m.id} className="rounded-md border border-edge bg-panel p-3">
-                        {m.teams.length === 1 ? (
-                          <p className="text-sm text-ink-dim">
-                            {teamLabel(m.teams[0])} —{" "}
-                            <span className="text-accent-2">{t.bye}</span>
-                          </p>
-                        ) : m.winner !== null && editingId !== m.id ? (
-                          <div>
-                            <div className="grid gap-1">
-                              {m.teams.map((tid) => (
-                                <div
-                                  key={tid}
-                                  className={`flex items-center justify-between rounded px-2 py-1 text-sm ${
-                                    m.winner === tid
-                                      ? "bg-accent/20 font-bold text-accent"
-                                      : "text-ink-dim/60"
-                                  }`}
-                                >
-                                  <span className={m.winner === tid ? "" : "line-through"}>
-                                    {teamLabel(tid)}
-                                  </span>
-                                  <span>{m.scores?.[tid] ?? 0}</span>
-                                </div>
-                              ))}
-                            </div>
-                            <button
-                              onClick={() => setEditingId(m.id)}
-                              className="mt-1.5 text-[10px] font-semibold text-ink-dim underline decoration-dotted transition hover:text-accent-2"
-                            >
-                              {t.edit}
-                            </button>
-                          </div>
-                        ) : (
-                          <MatchScoreForm
-                            match={m}
-                            teamLabel={teamLabel}
-                            onConfirm={(scores) => report(m.id, scores)}
-                            onCancel={m.winner !== null ? () => setEditingId(null) : undefined}
-                            confirmLabel={t.confirmScore}
-                            cancelLabel={t.cancel}
-                            tieError={t.scoreTie}
-                            vs={t.vs}
-                          />
-                        )}
-                      </div>
-                    ))}
+                ))}
+                {champMatches.length > 0 && (
+                  <div className="panel mt-4 p-5">
+                    <div className="font-display text-sm font-bold tracking-wider text-accent">
+                      {t.championship}
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {champMatches.map((m) => matchCard(m, true))}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                )}
+                {consMatches.length > 0 && (
+                  <div className="panel mt-4 p-5">
+                    <div className="font-display text-sm font-bold tracking-wider text-accent-2">
+                      {t.consolation}
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {consMatches.map((m) => matchCard(m, true))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <div className="panel h-fit p-5">
@@ -606,35 +741,41 @@ export default function PartnerBattleRunner({
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row, i) => (
-                    <tr key={row.id} className="border-t border-edge/60">
-                      <td className="py-1.5 pr-1">
-                        {i < 2 ? (
-                          <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[9px] font-bold text-accent">
-                            {i + 1}
-                          </span>
-                        ) : (
-                          <span className="text-ink-dim">{i + 1}</span>
-                        )}
-                      </td>
-                      <td className="py-1.5 pr-1 text-ink">{teamLabel(row.id)}</td>
-                      <td className="py-1.5 pr-1 text-right text-ink-dim">
-                        {row.wins}-{row.losses}
-                      </td>
-                      <td
-                        className={`py-1.5 pr-1 text-right font-semibold ${
-                          row.diff > 0 ? "text-accent" : row.diff < 0 ? "text-atk" : "text-ink-dim"
-                        }`}
-                      >
-                        {row.diff > 0 ? `+${row.diff}` : row.diff}
-                      </td>
-                      <td className="py-1.5 text-right text-ink-dim">{row.pts}</td>
-                    </tr>
-                  ))}
+                  {rows.map((row, i) => {
+                    const half = Math.ceil(rows.length / 2);
+                    const highlight = mode === "league" ? i < half : i < 2;
+                    return (
+                      <tr key={row.id} className="border-t border-edge/60">
+                        <td className="py-1.5 pr-1">
+                          {highlight ? (
+                            <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[9px] font-bold text-accent">
+                              {i + 1}
+                            </span>
+                          ) : (
+                            <span className="text-ink-dim">{i + 1}</span>
+                          )}
+                        </td>
+                        <td className="py-1.5 pr-1 text-ink">{teamLabel(row.id)}</td>
+                        <td className="py-1.5 pr-1 text-right text-ink-dim">
+                          {row.wins}-{row.losses}
+                        </td>
+                        <td
+                          className={`py-1.5 pr-1 text-right font-semibold ${
+                            row.diff > 0 ? "text-accent" : row.diff < 0 ? "text-atk" : "text-ink-dim"
+                          }`}
+                        >
+                          {row.diff > 0 ? `+${row.diff}` : row.diff}
+                        </td>
+                        <td className="py-1.5 text-right text-ink-dim">{row.pts}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-            <p className="mt-3 text-[10px] font-semibold text-accent">◆ {t.top2}</p>
+            <p className="mt-3 text-[10px] font-semibold text-accent">
+              ◆ {mode === "league" ? t.leagueSplit : t.top2}
+            </p>
           </div>
         </div>
       )}
