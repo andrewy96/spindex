@@ -79,3 +79,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 }
 
 export const useAuth = () => useContext(AuthContext);
+
+/** True when the signed-in account is a superadmin — verified server-side. */
+export function useIsSuperadmin(): boolean {
+  const { session } = useAuth();
+  const [isSuperadmin, setIsSuperadmin] = useState(false);
+
+  useEffect(() => {
+    if (!session) {
+      setIsSuperadmin(false);
+      return;
+    }
+    let active = true;
+    fetch("/api/admin/me", {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    })
+      .then((res) => {
+        if (active) setIsSuperadmin(res.ok);
+      })
+      .catch(() => {
+        if (active) setIsSuperadmin(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [session]);
+
+  return isSuperadmin;
+}

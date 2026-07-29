@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Dict, Locale } from "@/i18n";
-import { useAuth } from "@/lib/auth";
+import { useAuth, useIsSuperadmin } from "@/lib/auth";
 import { Gathering, MY_CITIES, supabase } from "@/lib/supabase";
 import { profileDisplayName } from "@/lib/profileName";
 
@@ -26,6 +26,7 @@ function moneyLabel(g: Gathering, dict: Dict) {
 
 export default function GatheringsClient({ locale, dict }: { locale: Locale; dict: Dict }) {
   const { enabled, profile } = useAuth();
+  const isSuperadmin = useIsSuperadmin();
   const [city, setCity] = useState("all");
   const [timeScope, setTimeScope] = useState<"upcoming" | "past">("upcoming");
   const [items, setItems] = useState<Gathering[]>([]);
@@ -128,6 +129,17 @@ export default function GatheringsClient({ locale, dict }: { locale: Locale; dic
     await supabase.from("gatherings").update({ status: "cancelled" }).eq("id", g.id);
     setBusy(false);
     load();
+  };
+
+  const remove = async (g: Gathering) => {
+    if (!supabase || !profile) return;
+    if (!window.confirm(dict.gatherings.deleteConfirm.replace("{title}", g.title))) return;
+    setBusy(true);
+    setError(null);
+    const { error: err } = await supabase.rpc("delete_gathering", { gid: g.id });
+    setBusy(false);
+    if (err) setError(dict.gatherings.errorGeneric);
+    else load();
   };
 
   const copyShareLink = async (id: string) => {
@@ -311,6 +323,15 @@ export default function GatheringsClient({ locale, dict }: { locale: Locale; dic
                     <span className="rounded bg-panel px-2 py-1 text-[10px] font-semibold text-ink-dim">
                       {dict.gatherings.ended}
                     </span>
+                  )}
+                  {isSuperadmin && (
+                    <button
+                      onClick={() => remove(g)}
+                      disabled={busy}
+                      className="clip-x border border-atk/50 bg-atk/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-atk transition enabled:hover:bg-atk enabled:hover:text-bg disabled:opacity-50"
+                    >
+                      {dict.gatherings.delete}
+                    </button>
                   )}
                 </div>
               </div>

@@ -3,9 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useState } from "react";
 import { Dict, Locale, switchLocalePath } from "@/i18n";
-import { useAuth } from "@/lib/auth";
+import { useAuth, useIsSuperadmin } from "@/lib/auth";
 
 function AuthChip({ locale, dict }: { locale: Locale; dict: Dict }) {
   const { enabled, profile, loading } = useAuth();
@@ -32,24 +32,7 @@ function AuthChip({ locale, dict }: { locale: Locale; dict: Dict }) {
 }
 
 function AdminShortcut({ locale, dict }: { locale: Locale; dict: Dict }) {
-  const { session } = useAuth();
-  const [allowed, setAllowed] = useState(false);
-
-  useEffect(() => {
-    if (!session) {
-      setAllowed(false);
-      return;
-    }
-    let active = true;
-    fetch("/api/admin/me", {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    }).then((res) => {
-      if (active) setAllowed(res.ok);
-    });
-    return () => {
-      active = false;
-    };
-  }, [session]);
+  const allowed = useIsSuperadmin();
 
   if (!allowed) return null;
 

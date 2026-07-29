@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Dict, Locale } from "@/i18n";
-import { useAuth } from "@/lib/auth";
+import { useAuth, useIsSuperadmin } from "@/lib/auth";
 import {
   CommunityTournament,
   MY_CITIES,
@@ -24,9 +24,18 @@ function fmtWhen(iso: string, locale: Locale) {
   });
 }
 
+/** A tournament is past once it is closed, or its start time has gone by without it running. */
+function isPast(item: CommunityTournament) {
+  if (item.status === "completed" || item.status === "cancelled") return true;
+  if (item.status === "started") return false;
+  return new Date(item.starts_at).getTime() < Date.now();
+}
+
 export default function TournamentHostClient({ locale, dict }: { locale: Locale; dict: Dict }) {
   const { enabled, profile } = useAuth();
+  const isSuperadmin = useIsSuperadmin();
   const t = dict.tournaments;
+  const [timeScope, setTimeScope] = useState<"upcoming" | "past">("upcoming");
   const [items, setItems] = useState<CommunityTournament[]>([]);
   const [showPost, setShowPost] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -60,15 +69,23 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
     const { data, error: err } = await supabase
       .from("tournaments")
       .select(TOURNAMENT_SELECT)
-      .eq("status", "open")
-      .order("starts_at", { ascending: true })
-      .limit(80);
+      .order("starts_at", { ascending: false })
+      .limit(120);
     if (!err) setItems((data as unknown as CommunityTournament[]) ?? []);
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const [upcoming, past] = useMemo(() => {
+    const up: CommunityTournament[] = [];
+    const done: CommunityTournament[] = [];
+    for (const item of items) (isPast(item) ? done : up).push(item);
+    up.sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+    return [up, done];
+  }, [items]);
+  const visible = timeScope === "upcoming" ? upcoming : past;
 
   if (!enabled) {
     return (
@@ -134,6 +151,17 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
     load();
   };
 
+  const remove = async (item: CommunityTournament) => {
+    if (!supabase || !profile) return;
+    if (!window.confirm(t.deleteConfirm.replace("{name}", item.name))) return;
+    setBusy(true);
+    setError(null);
+    const { error: err } = await supabase.rpc("delete_tournament", { tid: item.id });
+    setBusy(false);
+    if (err) setError(t.hostError);
+    else load();
+  };
+
   const formatLabel = (key: TournamentFormat) =>
     formats.find((f) => f.key === key)?.label ?? key;
 
@@ -151,7 +179,23 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
           <h2 className="font-display text-xl font-bold tracking-wide">{t.hostTitle}</h2>
           <p className="mt-1 text-sm text-ink-dim">{t.hostIntro}</p>
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="flex rounded-md border border-edge bg-panel p-0.5">
+            {(["upcoming", "past"] as const).map((scope) => (
+              <button
+                key={scope}
+                onClick={() => setTimeScope(scope)}
+                className={`rounded px-3 py-1.5 text-xs font-semibold transition ${
+                  timeScope === scope
+                    ? "bg-accent/15 text-accent"
+                    : "text-ink-dim hover:text-ink"
+                }`}
+              >
+                {scope === "upcoming" ? t.timeUpcoming : t.timePast} (
+                {scope === "upcoming" ? upcoming.length : past.length})
+              </button>
+            ))}
+          </div>
           {profile ? (
             <button
               onClick={() => setShowPost(!showPost)}
@@ -236,11 +280,13 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
 
       {error && !showPost && <p className="mb-4 text-xs font-semibold text-atk">{error}</p>}
 
-      {items.length === 0 ? (
-        <p className="py-12 text-center text-sm text-ink-dim">{t.hostEmpty}</p>
+      {visible.length === 0 ? (
+        <p className="py-12 text-center text-sm text-ink-dim">
+          {timeScope === "past" ? t.hostEmptyPast : t.hostEmpty}
+        </p>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
-          {items.map((item) => {
+          {visible.map((item) => {
             const players = item.players ?? [];
             const joined = players
               .filter((p) => p.status === "joined")
@@ -248,6 +294,17 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
             const waitlisted = players.filter((p) => p.status === "waitlisted");
             const mine = profile ? players.find((p) => p.user_id === profile.id) : null;
             const isHost = profile?.id === item.host;
+            const past = isPast(item);
+            const statusLabel =
+              item.status === "cancelled"
+                ? t.statusCancelled
+                : item.status === "completed"
+                  ? t.statusCompleted
+                  : item.status === "started"
+                    ? t.statusLive
+                    : past
+                      ? t.statusEnded
+                      : null;
             return (
               <div key={item.id} className="panel flex flex-col gap-4 p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -260,9 +317,22 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
                       {t.hostedBy}: {profileDisplayName(item.host_profile)}
                     </div>
                   </div>
-                  <span className="rounded-full bg-accent-2/10 px-2 py-0.5 text-[10px] font-semibold text-accent-2">
-                    {formatLabel(item.format)}
-                  </span>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="rounded-full bg-accent-2/10 px-2 py-0.5 text-[10px] font-semibold text-accent-2">
+                      {formatLabel(item.format)}
+                    </span>
+                    {statusLabel && (
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          item.status === "started"
+                            ? "bg-accent/15 text-accent"
+                            : "bg-panel text-ink-dim"
+                        }`}
+                      >
+                        {statusLabel}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {item.note && <p className="text-sm leading-relaxed text-ink-dim">{item.note}</p>}
                 <div className="flex flex-wrap gap-1.5 text-[10px] font-semibold">
@@ -304,7 +374,7 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
                   <button onClick={() => copyShareLink(item.id)} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent-2 transition hover:border-accent-2/60">
                     {copiedId === item.id ? t.copied : t.shareLink}
                   </button>
-                  {!profile ? null : mine ? (
+                  {!profile ? null : mine && !past ? (
                     <button onClick={() => leave(item)} disabled={busy} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink disabled:opacity-50">
                       {t.leave}
                     </button>
@@ -312,11 +382,20 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
                     <button onClick={() => cancel(item)} disabled={busy || item.status !== "open"} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink disabled:opacity-50">
                       {t.cancel}
                     </button>
-                  ) : item.status === "open" ? (
+                  ) : item.status === "open" && !past ? (
                     <button onClick={() => join(item)} disabled={busy} className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110 disabled:opacity-50">
                       {t.joinTournament}
                     </button>
                   ) : null}
+                  {isSuperadmin && (
+                    <button
+                      onClick={() => remove(item)}
+                      disabled={busy}
+                      className="clip-x border border-atk/50 bg-atk/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-atk transition enabled:hover:bg-atk enabled:hover:text-bg disabled:opacity-50"
+                    >
+                      {t.delete}
+                    </button>
+                  )}
                 </div>
               </div>
             );

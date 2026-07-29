@@ -44,6 +44,9 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
   const [name1, setName1] = useState("");
   const [name2, setName2] = useState("");
   const [freeTargetScore, setFreeTargetScore] = useState(DEFAULT_WIN_SCORE);
+  /** Free play only: no point limit — the match runs until someone calls it. */
+  const [endless, setEndless] = useState(false);
+  const [ended, setEnded] = useState(false);
   const [rounds, setRounds] = useState<Round[]>([]);
   const [reportState, setReportState] = useState<"idle" | "busy" | "done" | "error">("idle");
   const [shareOpen, setShareOpen] = useState(false);
@@ -77,17 +80,42 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
     return [a, b];
   }, [rounds]);
 
-  const targetScore = challenge?.target_score ?? freeTargetScore;
-  const winner = s1 >= targetScore ? 1 : s2 >= targetScore ? 2 : null;
-  const firstToLabel = dict.battle.firstToPoints.replace("{points}", String(targetScore));
+  /** null when there is no point limit — only free play can be endless. */
+  const targetScore: number | null = challenge
+    ? challenge.target_score
+    : endless
+      ? null
+      : freeTargetScore;
+  const winner: 1 | 2 | null =
+    targetScore === null
+      ? ended && s1 !== s2
+        ? s1 > s2
+          ? 1
+          : 2
+        : null
+      : s1 >= targetScore
+        ? 1
+        : s2 >= targetScore
+          ? 2
+          : null;
+  /** No more scoring once a winner is decided or the endless match was called. */
+  const locked = winner !== null || ended;
+  const firstToLabel =
+    targetScore === null
+      ? dict.battle.noPointLimit
+      : dict.battle.firstToPoints.replace("{points}", String(targetScore));
 
   const addRound = (side: 1 | 2, finish: Finish) => {
-    if (winner) return;
+    if (locked) return;
     setRounds([...rounds, { side, finish, pts: FINISH_POINTS[finish] }]);
   };
-  const undo = () => setRounds(rounds.slice(0, -1));
+  const undo = () => {
+    setEnded(false);
+    setRounds(rounds.slice(0, -1));
+  };
   const reset = () => {
     setRounds([]);
+    setEnded(false);
     setReportState("idle");
   };
 
@@ -173,16 +201,26 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
             <input
               type="number"
               min={1}
-              max={30}
+              max={99}
               value={freeTargetScore}
               onChange={(e) =>
-                setFreeTargetScore(Math.max(1, Math.min(30, Number(e.target.value) || 1)))
+                setFreeTargetScore(Math.max(1, Math.min(99, Number(e.target.value) || 1)))
               }
-              disabled={rounds.length > 0}
+              disabled={endless || rounds.length > 0}
               className="w-16 rounded-md border border-edge bg-panel px-2 py-1 text-center text-ink outline-none focus:border-accent disabled:opacity-50"
             />
           </label>
-          <span>{firstToLabel}</span>
+          <label className="flex cursor-pointer items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={endless}
+              onChange={(e) => setEndless(e.target.checked)}
+              disabled={rounds.length > 0}
+              className="accent-[var(--color-accent)] disabled:opacity-50"
+            />
+            <span>{dict.battle.unlimited}</span>
+          </label>
+          <span className={endless ? "text-accent-2" : undefined}>{firstToLabel}</span>
         </div>
       )}
       {challenge && (
@@ -224,7 +262,7 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
       </div>
 
       {/* Start / countdown — free play only (no account needed) */}
-      {!challenge && <ShootStart dict={dict} disabled={!!winner} />}
+      {!challenge && <ShootStart dict={dict} disabled={locked} />}
 
       {/* Finish buttons */}
       <div className="grid grid-cols-2 gap-4">
@@ -234,7 +272,7 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
               <button
                 key={f.key}
                 onClick={() => addRound(p.n, f.key)}
-                disabled={!!winner}
+                disabled={locked}
                 className="rounded-lg border px-2 py-3 font-display text-xs font-bold tracking-wide transition enabled:hover:brightness-125 disabled:opacity-30"
                 style={{
                   borderColor: `color-mix(in srgb, ${f.color} 45%, transparent)`,
@@ -258,6 +296,15 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
         >
           ↩ {dict.battle.undo}
         </button>
+        {targetScore === null && !ended && (
+          <button
+            onClick={() => setEnded(true)}
+            disabled={rounds.length === 0 || s1 === s2}
+            className="clip-x bg-accent px-5 py-2.5 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-40"
+          >
+            {dict.battle.endMatch}
+          </button>
+        )}
         <button
           onClick={reset}
           disabled={rounds.length === 0 || reportState === "done"}
