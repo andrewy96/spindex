@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Dict, Locale } from "@/i18n";
 import { supabase, MY_CITIES } from "@/lib/supabase";
 import { normalizeMyPhone } from "@/lib/phone";
+import { isValidHandle, slugifyHandle } from "@/lib/handle";
+import { AVATAR_ACCEPT, checkAvatarFile, uploadAvatar } from "@/lib/avatar";
 
 const inputCls =
   "w-full rounded-md border border-edge bg-panel px-3 py-2.5 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent";
@@ -23,6 +25,8 @@ function ageFromBirthday(birthday: string): number | null {
   if (beforeBirthday) age -= 1;
   return age;
 }
+
+type HandleState = "idle" | "checking" | "free" | "taken";
 
 function NotConfigured({ dict }: { dict: Dict }) {
   return (
@@ -104,15 +108,77 @@ export function RegisterForm({ locale, dict }: { locale: Locale; dict: Dict }) {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [handle, setHandle] = useState("");
+  const [handleTouched, setHandleTouched] = useState(false);
+  const [editingHandle, setEditingHandle] = useState(false);
+  const [handleState, setHandleState] = useState<HandleState>("idle");
   const [displayName, setDisplayName] = useState("");
   const [city, setCity] = useState("");
   const [gender, setGender] = useState<"male" | "female" | "">("");
   const [birthday, setBirthday] = useState("");
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [registered, setRegistered] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const age = ageFromBirthday(birthday);
 
+  /** The @handle follows the blader name until the user edits it by hand. */
+  useEffect(() => {
+    if (handleTouched) return;
+    const slug = slugifyHandle(displayName);
+    setHandle(slug);
+    // Nothing usable to slugify (e.g. a Chinese-only name) — ask for one up front.
+    if (!slug && displayName.trim()) setEditingHandle(true);
+  }, [displayName, handleTouched]);
+
+  useEffect(() => {
+    if (!supabase || !isValidHandle(handle)) {
+      setHandleState("idle");
+      return;
+    }
+    setHandleState("checking");
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      const { data, error: err } = await supabase!
+        .from("profiles")
+        .select("id")
+        .eq("handle", handle)
+        .maybeSingle();
+      if (cancelled) return;
+      // Fail open: a blocked read should not stop someone registering.
+      setHandleState(err ? "idle" : data ? "taken" : "free");
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [handle]);
+
+  useEffect(() => {
+    if (!photo) {
+      setPhotoPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(photo);
+    setPhotoPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [photo]);
+
   if (!supabase) return <NotConfigured dict={dict} />;
+
+  const pickPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    const invalid = checkAvatarFile(file);
+    if (invalid) {
+      setError(invalid === "type" ? dict.profile.imageType : dict.profile.imageTooLarge);
+      return;
+    }
+    setError(null);
+    setPhoto(file);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,7 +186,15 @@ export function RegisterForm({ locale, dict }: { locale: Locale; dict: Dict }) {
     const e164 = normalizeMyPhone(phone);
     if (!e164) return setError(dict.auth.phoneInvalid);
     if (password.length < 8) return setError(dict.auth.passwordMin);
-    if (!/^[a-zA-Z0-9_]{3,20}$/.test(handle)) return setError(dict.auth.handleHint);
+    if (!displayName.trim()) return setError(dict.auth.bladerNameRequired);
+    if (!isValidHandle(handle)) {
+      setEditingHandle(true);
+      return setError(dict.auth.handleHint);
+    }
+    if (handleState === "taken") {
+      setEditingHandle(true);
+      return setError(dict.auth.handleTaken);
+    }
     if (gender !== "male" && gender !== "female") return setError(dict.auth.genderRequired);
     if (age == null || age < 0 || age > 120) return setError(dict.auth.birthdayInvalid);
     setBusy(true);
@@ -142,35 +216,124 @@ export function RegisterForm({ locale, dict }: { locale: Locale; dict: Dict }) {
       setBusy(false);
       return setError(dict.auth.registerFailed);
     }
-    const { error: err } = await supabase!.auth.signInWithPassword({
+    const { data: session, error: err } = await supabase!.auth.signInWithPassword({
       phone: e164,
       password,
     });
+    if (err || !session.user) {
+      setBusy(false);
+      return setError(dict.auth.registerFailed);
+    }
+    setRegistered(true);
+
+    // The account exists from here on — a failed photo is not a failed signup.
+    if (photo) {
+      const failure = await uploadAvatar(supabase!, session.user.id, photo);
+      if (failure) {
+        setBusy(false);
+        return setError(dict.auth.photoUploadFailed);
+      }
+    }
     setBusy(false);
-    if (err) return setError(dict.auth.registerFailed);
     router.push(`/${locale}/me`);
   };
 
   return (
     <form onSubmit={submit} className="panel space-y-4 p-6">
-      <div>
-        <label className={labelCls}>{dict.auth.handle}</label>
-        <input
-          value={handle}
-          onChange={(e) => setHandle(e.target.value)}
-          placeholder="phoenix_my"
-          required
-          className={inputCls}
-        />
-        <p className="mt-1 text-[11px] text-ink-dim">{dict.auth.handleHint}</p>
+      <div className="flex items-center gap-4">
+        <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-accent/40 bg-panel font-display text-2xl font-black text-accent">
+          {photoPreview ? (
+            <img src={photoPreview} alt="" className="h-full w-full object-cover" />
+          ) : (
+            (displayName.trim() || handle || "?").slice(0, 1).toUpperCase()
+          )}
+        </div>
+        <div className="min-w-0">
+          <span className={labelCls}>{dict.auth.photo}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="inline-flex cursor-pointer items-center rounded-md border border-edge bg-panel px-3 py-2 font-display text-xs font-bold tracking-wider text-ink transition hover:border-accent hover:text-accent">
+              <input
+                type="file"
+                accept={AVATAR_ACCEPT}
+                onChange={pickPhoto}
+                disabled={busy}
+                className="sr-only"
+              />
+              {photo ? dict.auth.photoChange : dict.profile.uploadPhoto}
+            </label>
+            {photo && (
+              <button
+                type="button"
+                onClick={() => setPhoto(null)}
+                className="text-[11px] font-semibold text-ink-dim hover:text-atk"
+              >
+                {dict.auth.photoRemove}
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] text-ink-dim">{dict.auth.photoOptional}</p>
+        </div>
       </div>
       <div>
-        <label className={labelCls}>{dict.auth.displayName}</label>
+        <label className={labelCls}>{dict.auth.bladerName}</label>
         <input
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
+          placeholder={dict.auth.bladerNamePlaceholder}
+          maxLength={60}
+          required
           className={inputCls}
         />
+        <p className="mt-1 text-[11px] text-ink-dim">{dict.auth.bladerNameHint}</p>
+
+        <div className="mt-2 rounded-md border border-edge bg-panel/60 px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold text-ink-dim">
+              {dict.auth.profileLink}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setHandleTouched(true);
+                setEditingHandle((v) => !v);
+              }}
+              className="text-[11px] font-semibold text-accent hover:underline"
+            >
+              {editingHandle ? dict.auth.handleDone : dict.auth.handleEdit}
+            </button>
+          </div>
+          {editingHandle ? (
+            <input
+              value={handle}
+              onChange={(e) => {
+                setHandleTouched(true);
+                setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""));
+              }}
+              placeholder="phoenix_my"
+              maxLength={20}
+              className={`${inputCls} mt-1.5`}
+            />
+          ) : (
+            <div className="mt-0.5 truncate font-semibold text-ink">
+              @{handle || "—"}
+            </div>
+          )}
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+            {handle && <span className="text-ink-dim">/players/{handle}</span>}
+            {handleState === "checking" && (
+              <span className="text-ink-dim">{dict.auth.handleChecking}</span>
+            )}
+            {handleState === "free" && (
+              <span className="font-semibold text-accent">✓ {dict.auth.handleAvailable}</span>
+            )}
+            {handleState === "taken" && (
+              <span className="font-semibold text-atk">{dict.auth.handleTaken}</span>
+            )}
+          </div>
+          {editingHandle && (
+            <p className="mt-1 text-[11px] text-ink-dim">{dict.auth.handleHint}</p>
+          )}
+        </div>
       </div>
       <div>
         <label className={labelCls}>{dict.auth.city}</label>
@@ -243,13 +406,22 @@ export function RegisterForm({ locale, dict }: { locale: Locale; dict: Dict }) {
         <p className="mt-1 text-[11px] text-ink-dim">{dict.auth.passwordMin}</p>
       </div>
       {error && <p className="text-xs font-semibold text-atk">{error}</p>}
-      <button
-        type="submit"
-        disabled={busy}
-        className="clip-x w-full bg-accent px-6 py-3 font-display text-sm font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
-      >
-        {dict.auth.submitRegister}
-      </button>
+      {registered ? (
+        <Link
+          href={`/${locale}/me`}
+          className="clip-x block w-full bg-accent px-6 py-3 text-center font-display text-sm font-bold tracking-wider text-bg transition hover:brightness-110"
+        >
+          {dict.auth.continueToProfile}
+        </Link>
+      ) : (
+        <button
+          type="submit"
+          disabled={busy}
+          className="clip-x w-full bg-accent px-6 py-3 font-display text-sm font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+        >
+          {busy && photo ? dict.profile.uploading : dict.auth.submitRegister}
+        </button>
+      )}
       <p className="text-center text-xs text-ink-dim">
         {dict.auth.haveAccount}{" "}
         <Link href={`/${locale}/login`} className="font-semibold text-accent hover:underline">

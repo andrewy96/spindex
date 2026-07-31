@@ -6,6 +6,7 @@ import { Dict, Locale } from "@/i18n";
 import { useAuth } from "@/lib/auth";
 import { Gathering, MY_CITIES, supabase } from "@/lib/supabase";
 import { profileDisplayName } from "@/lib/profileName";
+import ProfileAvatar from "./ProfileAvatar";
 
 const inputCls =
   "w-full rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent";
@@ -38,15 +39,22 @@ function MemberName({
   locale: Locale;
 }) {
   const label = profileDisplayName(member.profile);
+  const avatar = <ProfileAvatar profile={member.profile} size={26} />;
   if (!member.profile?.handle) {
-    return <span>{label}</span>;
+    return (
+      <span className="flex min-w-0 items-center gap-2">
+        {avatar}
+        <span className="truncate">{label}</span>
+      </span>
+    );
   }
   return (
     <Link
       href={`/${locale}/players/${member.profile.handle}`}
-      className="font-semibold text-ink hover:text-accent"
+      className="flex min-w-0 items-center gap-2 font-semibold text-ink hover:text-accent"
     >
-      {label}
+      {avatar}
+      <span className="truncate">{label}</span>
     </Link>
   );
 }
@@ -274,9 +282,22 @@ export default function GatheringDetailClient({
                 <p className="mt-1 text-sm text-ink-dim">
                   {item.city} · {item.venue} · {fmtWhen(item.gather_at, locale)}
                 </p>
-                <p className="mt-1 text-xs text-ink-dim">
-                  {dict.gatherings.hostedBy}: {profileDisplayName(item.host_profile)}
-                </p>
+                <div className="mt-2 flex items-center gap-2 text-xs text-ink-dim">
+                  <ProfileAvatar profile={item.host_profile} size={32} />
+                  <span>
+                    {dict.gatherings.hostedBy}:{" "}
+                    {item.host_profile?.handle ? (
+                      <Link
+                        href={`/${locale}/players/${item.host_profile.handle}`}
+                        className="font-semibold text-ink hover:text-accent"
+                      >
+                        {profileDisplayName(item.host_profile)}
+                      </Link>
+                    ) : (
+                      profileDisplayName(item.host_profile)
+                    )}
+                  </span>
+                </div>
               </div>
               <span className="rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">{moneyLabel(item, dict)}</span>
             </div>
@@ -330,8 +351,9 @@ export default function GatheringDetailClient({
             ) : (
               <ol className="space-y-1 text-sm text-ink-dim">
                 {joined.map((member, index) => (
-                  <li key={member.user_id} className="rounded bg-panel px-2 py-1">
-                    #{index + 1} <MemberName member={member} locale={locale} />
+                  <li key={member.user_id} className="flex items-center gap-2 rounded bg-panel px-2 py-1">
+                    <span className="shrink-0 text-xs">#{index + 1}</span>
+                    <MemberName member={member} locale={locale} />
                   </li>
                 ))}
               </ol>
@@ -349,8 +371,9 @@ export default function GatheringDetailClient({
                 </div>
                 <ol className="space-y-1 text-sm text-ink-dim">
                   {waitlisted.map((member, index) => (
-                    <li key={member.user_id} className="rounded bg-panel px-2 py-1">
-                      #{index + 1} <MemberName member={member} locale={locale} />
+                    <li key={member.user_id} className="flex items-center gap-2 rounded bg-panel px-2 py-1">
+                      <span className="shrink-0 text-xs">#{index + 1}</span>
+                      <MemberName member={member} locale={locale} />
                     </li>
                   ))}
                 </ol>

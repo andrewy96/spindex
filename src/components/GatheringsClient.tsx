@@ -6,6 +6,7 @@ import { Dict, Locale } from "@/i18n";
 import { useAuth, useIsSuperadmin } from "@/lib/auth";
 import { Gathering, MY_CITIES, supabase } from "@/lib/supabase";
 import { profileDisplayName } from "@/lib/profileName";
+import ProfileAvatar from "./ProfileAvatar";
 
 const inputCls =
   "w-full rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent";
@@ -277,8 +278,11 @@ export default function GatheringsClient({ locale, dict }: { locale: Locale; dic
                     <div className="mt-0.5 text-xs text-ink-dim">
                       {g.city} · {g.venue} · {fmtWhen(g.gather_at, locale)}
                     </div>
-                    <div className="mt-1 text-xs text-ink-dim">
-                      {dict.gatherings.hostedBy}: {profileDisplayName(g.host_profile)}
+                    <div className="mt-1.5 flex items-center gap-2 text-xs text-ink-dim">
+                      <ProfileAvatar profile={g.host_profile} size={24} />
+                      <span className="truncate">
+                        {dict.gatherings.hostedBy}: {profileDisplayName(g.host_profile)}
+                      </span>
                     </div>
                   </div>
                   <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent">

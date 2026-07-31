@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth";
 import { supabase, Match, MY_CITIES, Profile, ProfilePrivate, Round } from "@/lib/supabase";
 import { profileDisplayName } from "@/lib/profileName";
 import { beylivePlayerCode, beyliveQrValue } from "@/lib/beylive";
+import { AVATAR_ACCEPT, checkAvatarFile, uploadAvatar } from "@/lib/avatar";
 import QrCodeBadge from "./QrCodeBadge";
 
 const FINISH_COLOR: Record<string, string> = {
@@ -20,8 +21,6 @@ const FINISH_COLOR: Record<string, string> = {
 const inputCls =
   "w-full rounded-md border border-edge bg-panel px-3 py-2.5 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent";
 const labelCls = "mb-1 block text-xs font-semibold text-ink-dim";
-const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
-const AVATAR_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 function fmtDate(iso: string, locale: Locale) {
   return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-MY", {
@@ -223,12 +222,6 @@ export function MatchRow({
   );
 }
 
-function avatarExtension(file: File) {
-  if (file.type === "image/png") return "png";
-  if (file.type === "image/webp") return "webp";
-  return "jpg";
-}
-
 function AccountSettings({
   profile,
   priv,
@@ -261,7 +254,7 @@ function AccountSettings({
     setBirthday(priv?.birthday ?? "");
   }, [priv, profile.city, profile.display_name]);
 
-  const uploadAvatar = async (event: ChangeEvent<HTMLInputElement>) => {
+  const pickAvatar = async (event: ChangeEvent<HTMLInputElement>) => {
     if (!supabase) return;
     const input = event.currentTarget;
     const file = input.files?.[0];
@@ -270,40 +263,17 @@ function AccountSettings({
 
     setMessage(null);
     setError(null);
-    if (!AVATAR_TYPES.has(file.type)) {
-      setError(dict.profile.imageType);
-      return;
-    }
-    if (file.size > MAX_AVATAR_BYTES) {
-      setError(dict.profile.imageTooLarge);
+    const invalid = checkAvatarFile(file);
+    if (invalid) {
+      setError(invalid === "type" ? dict.profile.imageType : dict.profile.imageTooLarge);
       return;
     }
 
     setPhotoBusy(true);
-    const path = `${profile.id}/avatar-${Date.now()}.${avatarExtension(file)}`;
-    const { error: uploadError } = await supabase.storage
-      .from("avatars")
-      .upload(path, file, {
-        cacheControl: "3600",
-        contentType: file.type,
-        upsert: false,
-      });
-
-    if (uploadError) {
-      setPhotoBusy(false);
-      setError(dict.profile.uploadFailed);
-      return;
-    }
-
-    const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({ avatar_url: data.publicUrl })
-      .eq("id", profile.id);
-
+    const failure = await uploadAvatar(supabase, profile.id, file);
     setPhotoBusy(false);
-    if (updateError) {
-      setError(dict.profile.updateFailed);
+    if (failure) {
+      setError(failure === "upload" ? dict.profile.uploadFailed : dict.profile.updateFailed);
       return;
     }
     await refreshProfile();
@@ -400,8 +370,8 @@ function AccountSettings({
           <label className="mt-3 inline-flex cursor-pointer items-center rounded-md border border-edge bg-panel px-3 py-2 font-display text-xs font-bold tracking-wider text-ink transition hover:border-accent hover:text-accent">
             <input
               type="file"
-              accept="image/png,image/jpeg,image/webp"
-              onChange={uploadAvatar}
+              accept={AVATAR_ACCEPT}
+              onChange={pickAvatar}
               disabled={photoBusy}
               className="sr-only"
             />
@@ -413,13 +383,16 @@ function AccountSettings({
         <div className="space-y-5">
           <form onSubmit={saveProfile} className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className={labelCls}>{dict.auth.displayName}</label>
+              <label className={labelCls}>{dict.auth.bladerName}</label>
               <input
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 maxLength={60}
                 className={inputCls}
               />
+              <p className="mt-1 text-[11px] text-ink-dim">
+                {dict.auth.profileLink}: /players/{profile.handle}
+              </p>
             </div>
             <div>
               <label className={labelCls}>{dict.auth.city}</label>
