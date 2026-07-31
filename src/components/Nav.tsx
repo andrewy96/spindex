@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { Dict, Locale, switchLocalePath } from "@/i18n";
 import { useAuth, useIsSuperadmin } from "@/lib/auth";
+import { MARKET_ENABLED } from "@/lib/features";
 
 function AuthChip({ locale, dict }: { locale: Locale; dict: Dict }) {
   const { enabled, profile, loading } = useAuth();
@@ -75,7 +76,7 @@ export default function Nav({ locale, dict }: { locale: Locale; dict: Dict }) {
     { href: `/${locale}/tournaments`, label: dict.nav.tournaments },
     { href: `/${locale}/beylive`, label: "BEYLIVE" },
     { href: `/${locale}/gatherings`, label: dict.nav.gatherings },
-    { href: `/${locale}/market`, label: dict.nav.market },
+    ...(MARKET_ENABLED ? [{ href: `/${locale}/market`, label: dict.nav.market }] : []),
     { href: `/${locale}/battle`, label: dict.nav.battle },
   ];
 

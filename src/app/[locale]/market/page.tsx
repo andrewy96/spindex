@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getDict, isLocale, Locale, locales } from "@/i18n";
 import market from "@/data/market.json";
 import MarketClient from "@/components/MarketClient";
+import { MARKET_ENABLED } from "@/lib/features";
 
 export function generateStaticParams() {
   return locales.map((locale) => ({ locale }));
@@ -26,6 +27,8 @@ export default async function MarketPage({
 }) {
   const { locale: raw } = await params;
   if (!isLocale(raw)) notFound();
+  // Hidden in production: the nav link is gone, so the URL should not resolve either.
+  if (!MARKET_ENABLED) notFound();
   const locale = raw as Locale;
   const dict = getDict(locale);
 
