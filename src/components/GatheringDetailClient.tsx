@@ -242,6 +242,28 @@ export default function GatheringDetailClient({
     load();
   };
 
+  /** Host-side shuffle: someone drops out, their spot opens for the waitlist. */
+  const moveMember = async (userId: string, next: "joined" | "waitlisted") => {
+    if (!supabase || !isHost) return;
+    setBusy(true);
+    setError(null);
+    const { error: err } = await supabase.rpc("set_gathering_member_status", {
+      gid: item.id,
+      member: userId,
+      new_status: next,
+    });
+    setBusy(false);
+    if (err) {
+      setError(
+        err.message.includes("gathering_full")
+          ? dict.gatherings.gatheringFull
+          : dict.gatherings.errorGeneric
+      );
+      return;
+    }
+    load();
+  };
+
   const cancel = async () => {
     if (!supabase || !profile) return;
     setBusy(true);
@@ -497,6 +519,15 @@ export default function GatheringDetailClient({
                   <li key={member.user_id} className="flex items-center gap-2 rounded bg-panel px-2 py-1">
                     <span className="shrink-0 text-xs">#{index + 1}</span>
                     <MemberName member={member} locale={locale} />
+                    {isHost && (
+                      <button
+                        onClick={() => moveMember(member.user_id, "waitlisted")}
+                        disabled={busy}
+                        className="ml-auto shrink-0 rounded border border-edge px-2 py-0.5 text-[10px] font-semibold text-ink-dim transition enabled:hover:border-accent-2/60 enabled:hover:text-accent-2 disabled:opacity-40"
+                      >
+                        {dict.gatherings.moveToWaitlist}
+                      </button>
+                    )}
                   </li>
                 ))}
               </ol>
@@ -517,6 +548,15 @@ export default function GatheringDetailClient({
                     <li key={member.user_id} className="flex items-center gap-2 rounded bg-panel px-2 py-1">
                       <span className="shrink-0 text-xs">#{index + 1}</span>
                       <MemberName member={member} locale={locale} />
+                      {isHost && (
+                        <button
+                          onClick={() => moveMember(member.user_id, "joined")}
+                          disabled={busy}
+                          className="ml-auto shrink-0 rounded border border-edge px-2 py-0.5 text-[10px] font-semibold text-accent transition enabled:hover:border-accent/60 disabled:opacity-40"
+                        >
+                          {dict.gatherings.moveToJoined}
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ol>
