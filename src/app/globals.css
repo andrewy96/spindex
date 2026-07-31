@@ -77,6 +77,42 @@ body {
   animation: countdown-pop 0.95s ease-out both;
 }
 
+/* scoreboard: the running total kicks when it changes */
+@keyframes score-bump {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+.animate-score-bump {
+  animation: score-bump 0.32s ease-out;
+}
+
+/* scoreboard: the points just scored float up off the total */
+@keyframes score-float {
+  0% { opacity: 0; transform: translateY(12px) scale(0.8); }
+  18% { opacity: 1; transform: translateY(0) scale(1.12); }
+  100% { opacity: 0; transform: translateY(-44px) scale(1); }
+}
+.animate-score-float {
+  animation: score-float 0.95s ease-out forwards;
+}
+
+@keyframes winner-pulse {
+  0%, 100% { text-shadow: 0 0 22px rgba(0, 229, 143, 0.5); }
+  50% { text-shadow: 0 0 44px rgba(0, 229, 143, 0.95); }
+}
+.animate-winner-pulse {
+  animation: winner-pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-score-bump,
+  .animate-score-float,
+  .animate-winner-pulse {
+    animation: none;
+  }
+}
+
 ::selection {
   background: rgba(0, 229, 143, 0.35);
 }

@@ -30,11 +30,13 @@ export default async function ScorePage({
   const dict = getDict(locale);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
-      <h1 className="text-center font-display text-3xl font-bold tracking-wide">
+    <div className="mx-auto max-w-6xl px-3 py-6 sm:px-4 sm:py-10">
+      <h1 className="text-center font-display text-2xl font-bold tracking-wide sm:text-3xl">
         {dict.battle.scoreboard}
       </h1>
-      <p className="mb-8 mt-1 text-center text-sm text-ink-dim">{dict.battle.scoreboardSub}</p>
+      <p className="mb-5 mt-1 text-center text-xs text-ink-dim sm:mb-8 sm:text-sm">
+        {dict.battle.scoreboardSub}
+      </p>
       <Suspense fallback={null}>
         <ScoreboardClient locale={locale} dict={dict} />
       </Suspense>

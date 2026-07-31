@@ -7,7 +7,7 @@
     <filter id="softBlur">
       <feGaussianBlur stdDeviation="3"/>
     </filter>
-    <filter id="xGlow" x="-40%" y="-40%" width="180%" height="180%">
+    <filter id="accentGlow" x="-40%" y="-40%" width="180%" height="180%">
       <feGaussianBlur stdDeviation="6" result="blur"/>
       <feMerge>
         <feMergeNode in="blur"/>
@@ -21,8 +21,7 @@
   <g filter="url(#softBlur)" opacity="0.55">
     <rect x="84" y="118" width="912" height="762" rx="18" fill="#101721" stroke="#26303c" stroke-width="4"/>
     <rect x="84" y="118" width="912" height="70" rx="18" fill="#080b10"/>
-    <text x="126" y="163" fill="#dce5ee" font-family="Bahnschrift, Orbitron, Segoe UI, Arial, sans-serif" font-size="28" font-weight="700" letter-spacing="3">SPINDE</text>
-    <text x="249" y="163" fill="#00e58f" font-family="Bahnschrift, Orbitron, Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">X</text>
+    <text x="126" y="165" font-family="Bahnschrift, Orbitron, Segoe UI, Arial, sans-serif" font-size="32" font-weight="700" letter-spacing="0"><tspan fill="#dce5ee">s</tspan><tspan fill="#00e58f">p</tspan><tspan fill="#dce5ee">index</tspan></text>
     <rect x="590" y="140" width="64" height="18" rx="5" fill="#697481"/>
     <rect x="672" y="140" width="76" height="18" rx="5" fill="#697481"/>
     <rect x="766" y="140" width="86" height="18" rx="5" fill="#697481"/>
@@ -60,9 +59,8 @@
   <rect x="84" y="118" width="912" height="762" rx="18" fill="none" stroke="#8b98a8" stroke-opacity="0.28" stroke-width="3"/>
 
   <g>
-    <text x="518" y="414" text-anchor="middle" fill="#e8eef4" font-family="Bahnschrift, Orbitron, Segoe UI, Arial, sans-serif" font-size="78" font-weight="700" letter-spacing="7">SPINDE</text>
-    <text x="702" y="414" text-anchor="start" fill="#00e58f" font-family="Bahnschrift, Orbitron, Segoe UI, Arial, sans-serif" font-size="78" font-weight="700" filter="url(#xGlow)">X</text>
+    <text x="540" y="414" text-anchor="middle" font-family="Bahnschrift, Orbitron, Segoe UI, Arial, sans-serif" font-size="86" font-weight="700" letter-spacing="0"><tspan fill="#e8eef4">s</tspan><tspan fill="#00e58f">p</tspan><tspan fill="#e8eef4">index</tspan></text>
     <text x="540" y="573" text-anchor="middle" fill="#e8eef4" font-family="Bahnschrift, Orbitron, Segoe UI, Arial, sans-serif" font-size="112" font-weight="800" letter-spacing="12">COMING</text>
-    <text x="540" y="700" text-anchor="middle" fill="#00e58f" font-family="Bahnschrift, Orbitron, Segoe UI, Arial, sans-serif" font-size="112" font-weight="800" letter-spacing="12" filter="url(#xGlow)">SOON</text>
+    <text x="540" y="700" text-anchor="middle" fill="#00e58f" font-family="Bahnschrift, Orbitron, Segoe UI, Arial, sans-serif" font-size="112" font-weight="800" letter-spacing="12" filter="url(#accentGlow)">SOON</text>
   </g>
 </svg>

@@ -63,13 +63,13 @@ export default function ShootStart({ dict, disabled }: { dict: Dict; disabled: b
   return (
     <>
       {/* Start buttons — one per player column */}
-      <div className="mb-4 grid grid-cols-2 gap-4">
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:mb-4 sm:gap-4">
         {([0, 1] as const).map((side) => (
           <button
             key={side}
             onClick={() => press(side)}
             disabled={running || disabled}
-            className={`clip-x border px-2 py-3 font-display text-sm font-bold tracking-[0.2em] transition disabled:opacity-40 ${
+            className={`clip-x touch-manipulation border px-2 py-3.5 font-display text-sm font-bold tracking-[0.15em] transition duration-75 enabled:active:scale-95 disabled:opacity-40 sm:tracking-[0.2em] ${
               ready[side]
                 ? "border-accent bg-accent/15 text-accent"
                 : "border-edge bg-panel text-ink enabled:hover:border-accent/60 enabled:hover:text-accent"
@@ -81,7 +81,7 @@ export default function ShootStart({ dict, disabled }: { dict: Dict; disabled: b
       </div>
 
       {/* Voice pack selector */}
-      <div className="mb-4 flex items-center justify-center gap-2 text-xs text-ink-dim">
+      <div className="mb-3 flex items-center justify-center gap-2 text-xs text-ink-dim sm:mb-4">
         <span>🔊 {dict.battle.voicePack}</span>
         <select
           value={packId}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Dict, Locale } from "@/i18n";
@@ -22,6 +22,7 @@ import {
   shareDateLabel,
   shareSiteLabel,
 } from "@/lib/shareCard";
+import Fireworks from "./Fireworks";
 import ShareMatchModal from "./ShareMatchModal";
 import ShootStart from "./ShootStart";
 
@@ -50,6 +51,9 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
   const [rounds, setRounds] = useState<Round[]>([]);
   const [reportState, setReportState] = useState<"idle" | "busy" | "done" | "error">("idle");
   const [shareOpen, setShareOpen] = useState(false);
+  /** Last tap, so the scored points can float up off that player's total. */
+  const [pulse, setPulse] = useState<{ side: 1 | 2; pts: number; id: number } | null>(null);
+  const pulseId = useRef(0);
 
   useEffect(() => {
     if (!supabase || !challengeId) return;
@@ -107,17 +111,27 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
 
   const addRound = (side: 1 | 2, finish: Finish) => {
     if (locked) return;
-    setRounds([...rounds, { side, finish, pts: FINISH_POINTS[finish] }]);
+    const pts = FINISH_POINTS[finish];
+    pulseId.current += 1;
+    setPulse({ side, pts, id: pulseId.current });
+    navigator.vibrate?.(25);
+    setRounds([...rounds, { side, finish, pts }]);
   };
   const undo = () => {
     setEnded(false);
+    setPulse(null);
     setRounds(rounds.slice(0, -1));
   };
   const reset = () => {
     setRounds([]);
     setEnded(false);
+    setPulse(null);
     setReportState("idle");
   };
+
+  useEffect(() => {
+    if (winner) navigator.vibrate?.([40, 70, 140]);
+  }, [winner]);
 
   const canReport =
     !!profile &&
@@ -192,39 +206,48 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
   };
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto w-full max-w-3xl">
       {!challenge && (
-        <div className="mb-4 flex flex-wrap items-center justify-center gap-3 text-xs text-ink-dim">
-          <span>{dict.battle.freePlay}</span>
-          <label className="flex items-center gap-2">
-            <span>{dict.battle.targetScore}</span>
-            <input
-              type="number"
-              min={1}
-              max={99}
-              value={freeTargetScore}
-              onChange={(e) =>
-                setFreeTargetScore(Math.max(1, Math.min(99, Number(e.target.value) || 1)))
-              }
-              disabled={endless || rounds.length > 0}
-              className="w-16 rounded-md border border-edge bg-panel px-2 py-1 text-center text-ink outline-none focus:border-accent disabled:opacity-50"
-            />
-          </label>
-          <label className="flex cursor-pointer items-center gap-1.5">
-            <input
-              type="checkbox"
-              checked={endless}
-              onChange={(e) => setEndless(e.target.checked)}
-              disabled={rounds.length > 0}
-              className="accent-[var(--color-accent)] disabled:opacity-50"
-            />
-            <span>{dict.battle.unlimited}</span>
-          </label>
-          <span className={endless ? "text-accent-2" : undefined}>{firstToLabel}</span>
+        <div className="panel mb-3 flex flex-col items-center gap-2 px-3 py-3 sm:mb-4">
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+            <label className="flex items-center gap-2 text-sm">
+              <span className="text-ink-dim">{dict.battle.targetScore}</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={99}
+                value={freeTargetScore}
+                onChange={(e) =>
+                  setFreeTargetScore(Math.max(1, Math.min(99, Number(e.target.value) || 1)))
+                }
+                disabled={endless || rounds.length > 0}
+                className="w-16 rounded-md border border-edge bg-panel px-2 py-1.5 text-center text-base font-bold text-ink outline-none focus:border-accent disabled:opacity-40"
+              />
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={endless}
+                onChange={(e) => setEndless(e.target.checked)}
+                disabled={rounds.length > 0}
+                className="size-4 accent-[var(--color-accent)] disabled:opacity-40"
+              />
+              <span className={endless ? "font-semibold text-accent-2" : "text-ink-dim"}>
+                {dict.battle.unlimited}
+              </span>
+            </label>
+          </div>
+          <div className="space-y-0.5 text-center text-xs">
+            <div className={`font-semibold ${endless ? "text-accent-2" : "text-accent"}`}>
+              {firstToLabel}
+            </div>
+            <div className="text-ink-dim">{dict.battle.freePlay}</div>
+          </div>
         </div>
       )}
       {challenge && (
-        <p className="mb-4 text-center text-xs text-accent-2">
+        <p className="mb-3 text-center text-xs text-accent-2 sm:mb-4">
           ⚔ {name1} vs {name2} ·{" "}
           {challenge.format === "team" ? dict.battle.teamEvent : dict.battle.singleBattle} ·
           ★{challenge.wager} · {firstToLabel}
@@ -232,9 +255,14 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
       )}
 
       {/* Score display */}
-      <div className="panel bg-grid mb-4 grid grid-cols-2 divide-x divide-edge">
+      <div className="panel bg-grid mb-3 grid grid-cols-2 divide-x divide-edge overflow-hidden sm:mb-4">
         {players.map((p) => (
-          <div key={p.n} className="flex flex-col items-center gap-2 p-6">
+          <div
+            key={p.n}
+            className={`relative flex flex-col items-center gap-2 px-2 py-5 transition-colors sm:px-4 sm:py-7 ${
+              winner === p.n ? "bg-accent/[0.07]" : ""
+            }`}
+          >
             {challenge ? (
               <div className="max-w-full truncate text-sm font-semibold">{p.name}</div>
             ) : (
@@ -242,18 +270,30 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
                 value={p.name}
                 onChange={(e) => p.setName(e.target.value)}
                 placeholder={p.n === 1 ? dict.battle.player1 : dict.battle.player2}
-                className="w-full max-w-40 rounded-md border border-edge bg-panel px-2 py-1 text-center text-sm outline-none focus:border-accent"
+                className="w-full max-w-44 rounded-md border border-edge bg-panel px-2 py-1.5 text-center text-sm outline-none focus:border-accent"
               />
             )}
-            <div
-              className={`font-display text-7xl font-black ${
-                winner === p.n ? "text-glow text-accent" : ""
-              }`}
-            >
-              {p.score}
+            <div className="relative">
+              <div
+                key={p.score}
+                className={`animate-score-bump font-display text-[4.5rem] font-black leading-none tabular-nums sm:text-8xl ${
+                  winner === p.n ? "text-glow text-accent" : ""
+                }`}
+              >
+                {p.score}
+              </div>
+              {pulse?.side === p.n && (
+                <span
+                  key={pulse.id}
+                  aria-hidden
+                  className="animate-score-float pointer-events-none absolute left-full top-1 ml-1 font-display text-2xl font-black text-accent-2 drop-shadow-[0_0_10px_rgba(56,217,255,0.7)] sm:text-3xl"
+                >
+                  +{pulse.pts}
+                </span>
+              )}
             </div>
             {winner === p.n && (
-              <div className="font-display text-sm font-bold tracking-[0.3em] text-accent">
+              <div className="animate-winner-pulse font-display text-sm font-bold tracking-[0.25em] text-accent sm:text-base">
                 🏆 {dict.battle.winner}
               </div>
             )}
@@ -264,16 +304,16 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
       {/* Start / countdown — free play only (no account needed) */}
       {!challenge && <ShootStart dict={dict} disabled={locked} />}
 
-      {/* Finish buttons */}
-      <div className="grid grid-cols-2 gap-4">
+      {/* Finish buttons — one 2x2 pad per player, thumb-sized on phones */}
+      <div className="grid grid-cols-2 gap-2 sm:gap-4">
         {players.map((p) => (
-          <div key={p.n} className="grid grid-cols-2 gap-2">
+          <div key={p.n} className="grid grid-cols-2 gap-1.5 sm:gap-2">
             {FINISHES.map((f) => (
               <button
                 key={f.key}
                 onClick={() => addRound(p.n, f.key)}
                 disabled={locked}
-                className="rounded-lg border px-2 py-3 font-display text-xs font-bold tracking-wide transition enabled:hover:brightness-125 disabled:opacity-30"
+                className="flex min-h-16 touch-manipulation select-none items-center justify-center rounded-lg border px-1 py-3 text-center font-display text-[0.8rem] font-bold leading-tight tracking-wide transition duration-75 enabled:active:scale-95 enabled:active:brightness-150 enabled:hover:brightness-125 disabled:opacity-30 sm:min-h-20 sm:text-base"
                 style={{
                   borderColor: `color-mix(in srgb, ${f.color} 45%, transparent)`,
                   background: `color-mix(in srgb, ${f.color} 12%, transparent)`,
@@ -288,11 +328,11 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
       </div>
 
       {/* Controls */}
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:mt-4">
         <button
           onClick={undo}
           disabled={rounds.length === 0 || reportState === "done"}
-          className="clip-x border border-edge bg-panel px-5 py-2.5 font-display text-xs font-bold tracking-wider transition enabled:hover:border-accent-2/60 enabled:hover:text-accent-2 disabled:opacity-40"
+          className="clip-x border border-edge bg-panel px-5 py-3 font-display text-sm font-bold tracking-wider transition enabled:hover:border-accent-2/60 enabled:hover:text-accent-2 disabled:opacity-40"
         >
           ↩ {dict.battle.undo}
         </button>
@@ -300,7 +340,7 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
           <button
             onClick={() => setEnded(true)}
             disabled={rounds.length === 0 || s1 === s2}
-            className="clip-x bg-accent px-5 py-2.5 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-40"
+            className="clip-x bg-accent px-5 py-3 font-display text-sm font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-40"
           >
             {dict.battle.endMatch}
           </button>
@@ -308,7 +348,7 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
         <button
           onClick={reset}
           disabled={rounds.length === 0 || reportState === "done"}
-          className="clip-x border border-edge bg-panel px-5 py-2.5 font-display text-xs font-bold tracking-wider text-ink-dim transition enabled:hover:text-ink disabled:opacity-40"
+          className="clip-x border border-edge bg-panel px-5 py-3 font-display text-sm font-bold tracking-wider text-ink-dim transition enabled:hover:text-ink disabled:opacity-40"
         >
           {dict.battle.resetMatch}
         </button>
@@ -316,7 +356,7 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
           <button
             onClick={report}
             disabled={reportState === "busy"}
-            className="clip-x bg-accent px-5 py-2.5 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+            className="clip-x bg-accent px-5 py-3 font-display text-sm font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
           >
             {dict.battle.reportResult}
           </button>
@@ -324,12 +364,14 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
         {winner && (
           <button
             onClick={() => setShareOpen(true)}
-            className="clip-x border border-accent-2/50 bg-accent-2/10 px-5 py-2.5 font-display text-xs font-bold tracking-wider text-accent-2 transition hover:bg-accent-2/20"
+            className="clip-x border border-accent-2/50 bg-accent-2/10 px-5 py-3 font-display text-sm font-bold tracking-wider text-accent-2 transition hover:bg-accent-2/20"
           >
             ⤴ {dict.battle.share}
           </button>
         )}
       </div>
+
+      {winner && !shareOpen && <Fireworks />}
 
       {shareOpen && winner && (
         <ShareMatchModal
