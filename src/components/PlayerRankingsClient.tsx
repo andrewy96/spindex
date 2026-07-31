@@ -102,6 +102,10 @@ export default function PlayerRankingsClient({
                   <img
                     src={player.avatar_url}
                     alt=""
+                    width={44}
+                    height={44}
+                    loading="lazy"
+                    decoding="async"
                     className="h-full w-full object-cover"
                     referrerPolicy="no-referrer"
                   />

@@ -119,6 +119,8 @@ function BladeDetail({ blade, locale, dict }: { blade: Blade; locale: Locale; di
               alt={name}
               fallbackLabel="X"
               color={TYPE_COLOR[blade.type]}
+              sizes="(max-width: 1024px) 90vw, 460px"
+              priority
             />
           </div>
         </div>
@@ -271,7 +273,7 @@ function SimpleDetail({
       <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         <div className="panel bg-grid flex min-h-64 items-center justify-center p-8">
           <div className="h-52 w-full">
-            <PartImage src={part.image} alt={title} fallbackLabel={title} />
+            <PartImage src={part.image} alt={title} fallbackLabel={title} sizes="(max-width: 1024px) 90vw, 420px" priority />
           </div>
         </div>
         <div>

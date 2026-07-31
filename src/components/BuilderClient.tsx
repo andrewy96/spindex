@@ -161,7 +161,7 @@ function PickerModal({
                     <TierChip tier={i.tier} />
                   </span>
                 )}
-                <PartImage src={i.image} alt={i.title} fallbackLabel={i.id} className="transition group-hover:scale-105" />
+                <PartImage src={i.image} alt={i.title} fallbackLabel={i.id} sizes="(max-width: 640px) 30vw, 140px" className="transition group-hover:scale-105" />
               </div>
               <div className="w-full truncate text-xs font-semibold">{i.title}</div>
               {i.subtitle && (
@@ -675,6 +675,7 @@ export default function BuilderClient({ locale, dict }: { locale: Locale; dict: 
                 alt="blade"
                 fallbackLabel="X"
                 color={TYPE_COLOR[combo.blade.type]}
+                sizes="256px"
               />
             ) : (
               <div className="flex h-full items-center justify-center rounded-lg border-2 border-dashed border-edge text-sm text-ink-dim">
@@ -690,17 +691,18 @@ export default function BuilderClient({ locale, dict }: { locale: Locale; dict: 
                 fallbackLabel={
                   combo.lockChip ? (locale === "zh" ? combo.lockChip.zh : combo.lockChip.id) : "LC"
                 }
+                sizes="112px"
               />
             </div>
           )}
           {combo.blade?.cx && combo.assist?.image && (
             <div className="-mt-3 h-16 w-full max-w-40 opacity-95">
-              <PartImage src={combo.assist.image} alt="assist" fallbackLabel={combo.assist.id} />
+              <PartImage src={combo.assist.image} alt="assist" fallbackLabel={combo.assist.id} sizes="160px" />
             </div>
           )}
           <div className="-mt-2 h-20 w-full max-w-36">
             {combo.ratchet ? (
-              <PartImage src={combo.ratchet.image} alt="ratchet" fallbackLabel={combo.ratchet.id} />
+              <PartImage src={combo.ratchet.image} alt="ratchet" fallbackLabel={combo.ratchet.id} sizes="144px" />
             ) : (
               <div className="flex h-full items-center justify-center rounded-lg border-2 border-dashed border-edge text-xs text-ink-dim">
                 {dict.builder.slotRatchet}
@@ -709,7 +711,7 @@ export default function BuilderClient({ locale, dict }: { locale: Locale; dict: 
           </div>
           <div className="-mt-1 h-16 w-full max-w-28">
             {combo.bit ? (
-              <PartImage src={combo.bit.image} alt="bit" fallbackLabel={combo.bit.id} />
+              <PartImage src={combo.bit.image} alt="bit" fallbackLabel={combo.bit.id} sizes="112px" />
             ) : (
               <div className="flex h-full items-center justify-center rounded-lg border-2 border-dashed border-edge text-xs text-ink-dim">
                 {dict.builder.slotBit}
@@ -731,7 +733,7 @@ export default function BuilderClient({ locale, dict }: { locale: Locale; dict: 
                 }`}
               >
                 <div className="h-12 w-12 shrink-0">
-                  <PartImage src={s.image} alt={s.label} fallbackLabel="+" />
+                  <PartImage src={s.image} alt={s.label} fallbackLabel="+" sizes="48px" />
                 </div>
                 <div className="min-w-0">
                   <div className="font-display text-[10px] uppercase tracking-widest text-ink-dim">
@@ -849,7 +851,7 @@ export default function BuilderClient({ locale, dict }: { locale: Locale; dict: 
                     }`}
                   >
                     <div className="h-12 w-12 shrink-0">
-                      <PartImage src={s.image} alt={s.label} fallbackLabel="+" />
+                      <PartImage src={s.image} alt={s.label} fallbackLabel="+" sizes="48px" />
                     </div>
                     <div className="min-w-0">
                       <div className="font-display text-[10px] uppercase tracking-widest text-ink-dim">

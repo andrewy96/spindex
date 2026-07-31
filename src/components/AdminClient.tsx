@@ -336,6 +336,10 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
                       <img
                         src={user.avatar_url}
                         alt=""
+                        width={48}
+                        height={48}
+                        loading="lazy"
+                        decoding="async"
                         className="h-full w-full object-cover"
                         referrerPolicy="no-referrer"
                       />

@@ -8,6 +8,8 @@ const notoSC = Noto_Sans_SC({
   subsets: ["latin"],
   weight: ["400", "500", "700"],
   variable: "--font-noto-sc",
+  // Only ever a fallback behind Inter, so it should not compete for first paint.
+  preload: false,
 });
 
 export const metadata: Metadata = {

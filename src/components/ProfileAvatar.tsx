@@ -22,6 +22,10 @@ export default function ProfileAvatar({
         <img
           src={profile.avatar_url}
           alt=""
+          width={size}
+          height={size}
+          loading="lazy"
+          decoding="async"
           className="h-full w-full object-cover"
           referrerPolicy="no-referrer"
         />

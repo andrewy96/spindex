@@ -36,6 +36,7 @@ export default function ComboRankingsPanel({ locale, dict }: { locale: Locale; d
                 alt={rankedComboName(r, locale)}
                 fallbackLabel="X"
                 color={r.blade ? TYPE_COLOR[r.blade.type] : undefined}
+                sizes="112px"
               />
             </div>
             <div className="font-display text-lg font-bold text-glow text-accent">
@@ -90,6 +91,7 @@ export default function ComboRankingsPanel({ locale, dict }: { locale: Locale; d
                         alt=""
                         fallbackLabel="X"
                         color={r.blade ? TYPE_COLOR[r.blade.type] : undefined}
+                        sizes="36px"
                       />
                     </div>
                     <div className="min-w-0">

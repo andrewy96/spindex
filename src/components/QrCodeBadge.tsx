@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import QRCode from "qrcode";
 
 export default function QrCodeBadge({
   value,
@@ -20,17 +19,20 @@ export default function QrCodeBadge({
       setSrc(null);
       return;
     }
-    QRCode.toDataURL(value, {
-      width: size,
-      margin: 1,
-      color: {
-        dark: "#e8eef4",
-        light: "#06080b",
-      },
-      errorCorrectionLevel: "M",
-    }).then((next) => {
-      if (active) setSrc(next);
-    });
+    // Loaded on demand — the encoder is dead weight on pages that never draw a code.
+    import("qrcode").then(({ default: QRCode }) =>
+      QRCode.toDataURL(value, {
+        width: size,
+        margin: 1,
+        color: {
+          dark: "#e8eef4",
+          light: "#06080b",
+        },
+        errorCorrectionLevel: "M",
+      }).then((next) => {
+        if (active) setSrc(next);
+      })
+    );
     return () => {
       active = false;
     };
