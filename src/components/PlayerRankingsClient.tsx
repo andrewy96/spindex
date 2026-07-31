@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Dict, Locale } from "@/i18n";
 import { MY_CITIES, Profile, supabase } from "@/lib/supabase";
+import ProfileAvatar from "./ProfileAvatar";
 
 function winRate(profile: Profile) {
   const total = profile.wins + profile.losses;
@@ -97,22 +98,7 @@ export default function PlayerRankingsClient({
               <div className="w-7 text-center font-display text-sm font-bold text-ink-dim">
                 #{index + 1}
               </div>
-              <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-accent/35 bg-panel font-display text-sm font-black text-accent">
-                {player.avatar_url ? (
-                  <img
-                    src={player.avatar_url}
-                    alt=""
-                    width={44}
-                    height={44}
-                    loading="lazy"
-                    decoding="async"
-                    className="h-full w-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  player.handle.slice(0, 1).toUpperCase()
-                )}
-              </div>
+              <ProfileAvatar profile={player} size={44} className="text-sm" />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-semibold">
                   {player.display_name || player.handle}

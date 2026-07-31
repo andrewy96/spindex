@@ -89,8 +89,9 @@ export default function Nav({ locale, dict }: { locale: Locale; dict: Dict }) {
           <Image
             src="/brand/spindex-wordmark.png"
             alt="SPINDEX Malaysia"
-            width={1196}
-            height={291}
+            // Declared at render size, not the 1196px source — this is on every page.
+            width={296}
+            height={72}
             priority
             className="h-9 w-auto"
           />
