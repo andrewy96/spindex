@@ -144,7 +144,8 @@ export default function GatheringsClient({ locale, dict }: { locale: Locale; dic
   };
 
   const copyShareLink = async (id: string) => {
-    const url = `${window.location.origin}/${locale}/gatherings/${id}`;
+    // Short form — /g/ redirects and opens in the reader's own language.
+    const url = `${window.location.origin}/g/${id}`;
     await navigator.clipboard.writeText(url);
     setCopiedId(id);
     window.setTimeout(() => setCopiedId(null), 1600);

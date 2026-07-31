@@ -138,7 +138,8 @@ export default function GatheringDetailClient({
   const isHost = profile?.id === item.host;
 
   const copyShareLink = async () => {
-    await navigator.clipboard.writeText(window.location.href);
+    // Short form — /g/ redirects and opens in the reader's own language.
+    await navigator.clipboard.writeText(`${window.location.origin}/g/${item.id}`);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
   };
