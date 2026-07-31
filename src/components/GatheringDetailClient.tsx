@@ -20,6 +20,82 @@ function fmtWhen(iso: string, locale: Locale) {
   });
 }
 
+function fmtDay(iso: string, locale: Locale) {
+  return new Date(iso).toLocaleDateString(locale === "zh" ? "zh-CN" : "en-MY", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function fmtClock(iso: string, locale: Locale) {
+  return new Date(iso).toLocaleTimeString(locale === "zh" ? "zh-CN" : "en-MY", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/** Days from today, counted by calendar day so "tomorrow" means tomorrow. */
+function daysAway(iso: string) {
+  const midnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  return Math.round((midnight(new Date(iso)) - midnight(new Date())) / 86400000);
+}
+
+function countdownLabel(iso: string, dict: Dict) {
+  const days = daysAway(iso);
+  if (new Date(iso) < new Date()) return dict.gatherings.ended;
+  if (days <= 0) return dict.gatherings.today;
+  if (days === 1) return dict.gatherings.tomorrow;
+  return dict.gatherings.inDays.replace("{n}", String(days));
+}
+
+function mapsUrl(g: Gathering) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+    `${g.venue}, ${g.city}, Malaysia`
+  )}`;
+}
+
+/** Gatherings have no end time, so block out a sensible default. */
+const ASSUMED_HOURS = 3;
+
+function calendarUrl(g: Gathering, shareUrl: string) {
+  const stamp = (d: Date) => d.toISOString().replace(/[-:]|\.\d{3}/g, "");
+  const start = new Date(g.gather_at);
+  const end = new Date(start.getTime() + ASSUMED_HOURS * 3600000);
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: g.title,
+    dates: `${stamp(start)}/${stamp(end)}`,
+    location: `${g.venue}, ${g.city}, Malaysia`,
+    details: shareUrl,
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function Detail({
+  label,
+  value,
+  sub,
+  action,
+}: {
+  label: string;
+  value: string;
+  sub?: string | null;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-md border border-edge bg-panel/50 px-3 py-2.5">
+      <div className="font-display text-[10px] font-bold uppercase tracking-widest text-ink-dim">
+        {label}
+      </div>
+      <div className="mt-1 text-sm font-semibold text-ink">{value}</div>
+      {sub && <div className="text-xs text-ink-dim">{sub}</div>}
+      {action && <div className="mt-1.5">{action}</div>}
+    </div>
+  );
+}
+
 function toDateTimeInput(iso: string) {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -136,10 +212,14 @@ export default function GatheringDetailClient({
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
   const mine = profile ? members.find((m) => m.user_id === profile.id) : null;
   const isHost = profile?.id === item.host;
+  const isPast = new Date(item.gather_at) < new Date();
+  // Only reached after the client-side load, so window is available.
+  const shareUrl =
+    typeof window === "undefined" ? "" : `${window.location.origin}/g/${item.id}`;
 
   const copyShareLink = async () => {
     // Short form — /g/ redirects and opens in the reader's own language.
-    await navigator.clipboard.writeText(`${window.location.origin}/g/${item.id}`);
+    await navigator.clipboard.writeText(shareUrl);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
   };
@@ -280,9 +360,6 @@ export default function GatheringDetailClient({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h1 className="font-display text-2xl font-bold tracking-wide">{item.title}</h1>
-                <p className="mt-1 text-sm text-ink-dim">
-                  {item.city} · {item.venue} · {fmtWhen(item.gather_at, locale)}
-                </p>
                 <div className="mt-2 flex items-center gap-2 text-xs text-ink-dim">
                   <ProfileAvatar profile={item.host_profile} size={32} />
                   <span>
@@ -300,22 +377,87 @@ export default function GatheringDetailClient({
                   </span>
                 </div>
               </div>
-              <span className="rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">{moneyLabel(item, dict)}</span>
-            </div>
-            {item.note && <p className="mt-4 text-sm leading-relaxed text-ink-dim">{item.note}</p>}
-            <div className="mt-4 flex flex-wrap gap-1.5 text-[10px] font-semibold">
-              <span className="rounded bg-panel px-2 py-0.5 text-accent-2">
-                {dict.gatherings.joined}: {joined.length}{item.capacity ? `/${item.capacity}` : ""}
-              </span>
-              <span className="rounded bg-panel px-2 py-0.5 text-ink-dim">
-                {dict.gatherings.waitlisted}: {waitlisted.length}
-              </span>
-              {mine && (
-                <span className="rounded bg-accent/10 px-2 py-0.5 text-accent">
-                  {mine.status === "joined" ? dict.gatherings.youJoined : dict.gatherings.youWaitlisted}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">{moneyLabel(item, dict)}</span>
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                    item.status === "cancelled" || isPast
+                      ? "bg-atk/10 text-atk"
+                      : "bg-accent-2/10 text-accent-2"
+                  }`}
+                >
+                  {item.status === "cancelled"
+                    ? dict.gatherings.cancel
+                    : countdownLabel(item.gather_at, dict)}
                 </span>
-              )}
+              </div>
             </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <Detail
+                label={dict.gatherings.when}
+                value={fmtDay(item.gather_at, locale)}
+                sub={fmtClock(item.gather_at, locale)}
+                action={
+                  isPast ? null : (
+                    <a
+                      href={calendarUrl(item, shareUrl)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] font-semibold text-accent hover:underline"
+                    >
+                      {dict.gatherings.addToCalendar} →
+                    </a>
+                  )
+                }
+              />
+              <Detail
+                label={dict.gatherings.venue}
+                value={item.venue}
+                sub={item.city}
+                action={
+                  <a
+                    href={mapsUrl(item)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] font-semibold text-accent hover:underline"
+                  >
+                    {dict.gatherings.openMaps} →
+                  </a>
+                }
+              />
+              <Detail
+                label={dict.gatherings.joined}
+                value={`${joined.length}${item.capacity ? ` / ${item.capacity}` : ""}`}
+                sub={
+                  waitlisted.length > 0
+                    ? `${dict.gatherings.waitlisted}: ${waitlisted.length}`
+                    : null
+                }
+              />
+              <Detail
+                label={dict.gatherings.joinMode}
+                value={
+                  item.join_mode === "open" ? dict.gatherings.joinOpen : dict.gatherings.joinWaitlist
+                }
+                sub={
+                  mine
+                    ? mine.status === "joined"
+                      ? dict.gatherings.youJoined
+                      : dict.gatherings.youWaitlisted
+                    : null
+                }
+              />
+            </div>
+
+            {item.note && (
+              <div className="mt-3 rounded-md border border-edge bg-panel/50 px-3 py-2.5">
+                <div className="font-display text-[10px] font-bold uppercase tracking-widest text-ink-dim">
+                  {dict.gatherings.note}
+                </div>
+                <p className="mt-1 text-sm leading-relaxed text-ink-dim">{item.note}</p>
+              </div>
+            )}
             <div className="mt-5 flex flex-wrap gap-2">
               {!profile ? (
                 <Link href={`/${locale}/login`} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent">

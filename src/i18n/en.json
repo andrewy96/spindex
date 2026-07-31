@@ -501,7 +501,12 @@
     "empty": "No gatherings yet. Post one.",
     "errorGeneric": "Something went wrong. Try again.",
     "delete": "Delete",
-    "deleteConfirm": "Delete \"{title}\" for good? Its name list goes with it."
+    "deleteConfirm": "Delete \"{title}\" for good? Its name list goes with it.",
+    "addToCalendar": "Add to calendar",
+    "openMaps": "Open in Maps",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "inDays": "In {n} days"
   },
   "market": {
     "title": "Marketplace",
