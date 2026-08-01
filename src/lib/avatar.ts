@@ -4,7 +4,10 @@ export const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 export const AVATAR_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 export const AVATAR_ACCEPT = "image/png,image/jpeg,image/webp";
 
-export function avatarExtension(file: File) {
+/** A picture that is ready to be stored, square-cropped and encoded. */
+export type AvatarImage = { blob: Blob; ext: string; type: string };
+
+export function avatarExtension(file: Blob) {
   if (file.type === "image/png") return "png";
   if (file.type === "image/webp") return "webp";
   return "jpg";
@@ -18,43 +21,53 @@ export function checkAvatarFile(file: File): "type" | "size" | null {
 }
 
 /** Avatars never render larger than this, so nothing bigger is worth storing. */
-const AVATAR_MAX_PX = 512;
+export const AVATAR_MAX_PX = 512;
+
+/**
+ * Cut a square out of the picture and encode it as WebP.
+ * `size` is the side of the square in source pixels; it is never upscaled.
+ * Returns null when the browser cannot do the conversion.
+ */
+export async function encodeAvatarCrop(
+  bitmap: ImageBitmap,
+  sx: number,
+  sy: number,
+  size: number
+): Promise<AvatarImage | null> {
+  const side = Math.round(Math.min(size, AVATAR_MAX_PX));
+  const canvas = document.createElement("canvas");
+  canvas.width = side;
+  canvas.height = side;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.drawImage(bitmap, sx, sy, size, size, 0, 0, side, side);
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/webp", 0.85)
+  );
+  return blob ? { blob, ext: "webp", type: "image/webp" } : null;
+}
 
 /**
  * Square-crop and shrink to AVATAR_MAX_PX as WebP.
  * A phone photo is a couple of megabytes; every scoreboard row pays for that
  * otherwise. Returns the original if the browser cannot do the conversion.
  */
-async function shrinkAvatar(file: File): Promise<{ blob: Blob; ext: string; type: string }> {
+export async function shrinkAvatar(file: Blob): Promise<AvatarImage> {
   const fallback = { blob: file, ext: avatarExtension(file), type: file.type };
   if (typeof createImageBitmap !== "function") return fallback;
   try {
     const bitmap = await createImageBitmap(file);
-    const side = Math.min(bitmap.width, bitmap.height, AVATAR_MAX_PX);
-    const canvas = document.createElement("canvas");
-    canvas.width = side;
-    canvas.height = side;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return fallback;
     // Centre crop to a square so the round mask never lops off half a face.
     const crop = Math.min(bitmap.width, bitmap.height);
-    ctx.drawImage(
+    const image = await encodeAvatarCrop(
       bitmap,
       (bitmap.width - crop) / 2,
       (bitmap.height - crop) / 2,
-      crop,
-      crop,
-      0,
-      0,
-      side,
-      side
+      crop
     );
     bitmap.close();
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/webp", 0.85)
-    );
-    if (!blob || blob.size >= file.size) return fallback;
-    return { blob, ext: "webp", type: "image/webp" };
+    if (!image || image.blob.size >= file.size) return fallback;
+    return image;
   } catch {
     return fallback;
   }
@@ -67,9 +80,9 @@ async function shrinkAvatar(file: File): Promise<{ blob: Blob; ext: string; type
 export async function uploadAvatar(
   client: SupabaseClient,
   userId: string,
-  file: File
+  image: AvatarImage
 ): Promise<"upload" | "update" | null> {
-  const { blob, ext, type } = await shrinkAvatar(file);
+  const { blob, ext, type } = image;
   const path = `${userId}/avatar-${Date.now()}.${ext}`;
   const { error: uploadError } = await client.storage.from("avatars").upload(path, blob, {
     cacheControl: "31536000",

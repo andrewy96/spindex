@@ -8,7 +8,9 @@ import { useAuth } from "@/lib/auth";
 import { supabase, Match, MY_CITIES, Profile, ProfilePrivate, Round } from "@/lib/supabase";
 import { profileDisplayName } from "@/lib/profileName";
 import { beylivePlayerCode, beyliveQrValue } from "@/lib/beylive";
-import { AVATAR_ACCEPT, checkAvatarFile, uploadAvatar } from "@/lib/avatar";
+import { AVATAR_ACCEPT, AvatarImage, checkAvatarFile, uploadAvatar } from "@/lib/avatar";
+import AvatarCropper from "./AvatarCropper";
+import PasswordInput from "./PasswordInput";
 import QrCodeBadge from "./QrCodeBadge";
 
 const FINISH_COLOR: Record<string, string> = {
@@ -246,6 +248,9 @@ function AccountSettings({
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The picked file is kept so the framing can be redone from the original. */
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [cropping, setCropping] = useState<File | null>(null);
 
   useEffect(() => {
     setDisplayName(profile.display_name || "");
@@ -254,8 +259,7 @@ function AccountSettings({
     setBirthday(priv?.birthday ?? "");
   }, [priv, profile.city, profile.display_name]);
 
-  const pickAvatar = async (event: ChangeEvent<HTMLInputElement>) => {
-    if (!supabase) return;
+  const pickAvatar = (event: ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget;
     const file = input.files?.[0];
     input.value = "";
@@ -268,9 +272,15 @@ function AccountSettings({
       setError(invalid === "type" ? dict.profile.imageType : dict.profile.imageTooLarge);
       return;
     }
+    setPhotoFile(file);
+    setCropping(file);
+  };
 
+  const saveAvatar = async (image: AvatarImage) => {
+    setCropping(null);
+    if (!supabase) return;
     setPhotoBusy(true);
-    const failure = await uploadAvatar(supabase, profile.id, file);
+    const failure = await uploadAvatar(supabase, profile.id, image);
     setPhotoBusy(false);
     if (failure) {
       setError(failure === "upload" ? dict.profile.uploadFailed : dict.profile.updateFailed);
@@ -346,6 +356,14 @@ function AccountSettings({
 
   return (
     <section className="panel p-5">
+      {cropping && (
+        <AvatarCropper
+          file={cropping}
+          dict={dict}
+          onCancel={() => setCropping(null)}
+          onDone={saveAvatar}
+        />
+      )}
       <div className="mb-5">
         <h2 className="font-display text-lg font-bold tracking-wide">
           {dict.profile.title}
@@ -377,6 +395,16 @@ function AccountSettings({
             />
             {photoBusy ? dict.profile.uploading : dict.profile.uploadPhoto}
           </label>
+          {photoFile && (
+            <button
+              type="button"
+              onClick={() => setCropping(photoFile)}
+              disabled={photoBusy}
+              className="ml-2 text-[11px] font-semibold text-accent hover:underline disabled:opacity-50"
+            >
+              {dict.profile.reposition}
+            </button>
+          )}
           <p className="mt-2 text-xs text-ink-dim">{dict.profile.photoHint}</p>
         </div>
 
@@ -458,8 +486,8 @@ function AccountSettings({
           >
             <div>
               <label className={labelCls}>{dict.profile.newPassword}</label>
-              <input
-                type="password"
+              <PasswordInput
+                dict={dict}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 autoComplete="new-password"
@@ -469,8 +497,8 @@ function AccountSettings({
             </div>
             <div>
               <label className={labelCls}>{dict.profile.confirmPassword}</label>
-              <input
-                type="password"
+              <PasswordInput
+                dict={dict}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 autoComplete="new-password"

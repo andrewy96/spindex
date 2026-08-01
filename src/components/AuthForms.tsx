@@ -7,7 +7,9 @@ import { Dict, Locale } from "@/i18n";
 import { supabase, MY_CITIES } from "@/lib/supabase";
 import { normalizeMyPhone } from "@/lib/phone";
 import { isValidHandle, slugifyHandle } from "@/lib/handle";
-import { AVATAR_ACCEPT, checkAvatarFile, uploadAvatar } from "@/lib/avatar";
+import { AVATAR_ACCEPT, AvatarImage, checkAvatarFile, uploadAvatar } from "@/lib/avatar";
+import AvatarCropper from "./AvatarCropper";
+import PasswordInput from "./PasswordInput";
 
 const inputCls =
   "w-full rounded-md border border-edge bg-panel px-3 py-2.5 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent";
@@ -76,8 +78,8 @@ export function LoginForm({ locale, dict }: { locale: Locale; dict: Dict }) {
       </div>
       <div>
         <label className={labelCls}>{dict.auth.password}</label>
-        <input
-          type="password"
+        <PasswordInput
+          dict={dict}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password"
@@ -115,7 +117,10 @@ export function RegisterForm({ locale, dict }: { locale: Locale; dict: Dict }) {
   const [city, setCity] = useState("");
   const [gender, setGender] = useState<"male" | "female" | "">("");
   const [birthday, setBirthday] = useState("");
-  const [photo, setPhoto] = useState<File | null>(null);
+  /** The picked file is kept so the framing can be redone from the original. */
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [cropping, setCropping] = useState<File | null>(null);
+  const [photo, setPhoto] = useState<AvatarImage | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [registered, setRegistered] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -159,7 +164,7 @@ export function RegisterForm({ locale, dict }: { locale: Locale; dict: Dict }) {
       setPhotoPreview(null);
       return;
     }
-    const url = URL.createObjectURL(photo);
+    const url = URL.createObjectURL(photo.blob);
     setPhotoPreview(url);
     return () => URL.revokeObjectURL(url);
   }, [photo]);
@@ -177,7 +182,13 @@ export function RegisterForm({ locale, dict }: { locale: Locale; dict: Dict }) {
       return;
     }
     setError(null);
-    setPhoto(file);
+    setPhotoFile(file);
+    setCropping(file);
+  };
+
+  const clearPhoto = () => {
+    setPhoto(null);
+    setPhotoFile(null);
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -240,6 +251,21 @@ export function RegisterForm({ locale, dict }: { locale: Locale; dict: Dict }) {
 
   return (
     <form onSubmit={submit} className="panel space-y-4 p-6">
+      {cropping && (
+        <AvatarCropper
+          file={cropping}
+          dict={dict}
+          onCancel={() => {
+            setCropping(null);
+            // Backing out of the very first crop leaves nothing to reposition.
+            if (!photo) setPhotoFile(null);
+          }}
+          onDone={(image) => {
+            setPhoto(image);
+            setCropping(null);
+          }}
+        />
+      )}
       <div className="flex items-center gap-4">
         <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-accent/40 bg-panel font-display text-2xl font-black text-accent">
           {photoPreview ? (
@@ -261,10 +287,19 @@ export function RegisterForm({ locale, dict }: { locale: Locale; dict: Dict }) {
               />
               {photo ? dict.auth.photoChange : dict.profile.uploadPhoto}
             </label>
+            {photo && photoFile && (
+              <button
+                type="button"
+                onClick={() => setCropping(photoFile)}
+                className="text-[11px] font-semibold text-accent hover:underline"
+              >
+                {dict.profile.reposition}
+              </button>
+            )}
             {photo && (
               <button
                 type="button"
-                onClick={() => setPhoto(null)}
+                onClick={clearPhoto}
                 className="text-[11px] font-semibold text-ink-dim hover:text-atk"
               >
                 {dict.auth.photoRemove}
@@ -394,8 +429,8 @@ export function RegisterForm({ locale, dict }: { locale: Locale; dict: Dict }) {
       </div>
       <div>
         <label className={labelCls}>{dict.auth.password}</label>
-        <input
-          type="password"
+        <PasswordInput
+          dict={dict}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="new-password"
