@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Dict, Locale } from "@/i18n";
 import { useAuth } from "@/lib/auth";
 import { MY_CITIES } from "@/lib/supabase";
+import { ResetRequest } from "@/lib/passwordReset";
+import { displayMyPhone } from "@/lib/phone";
 
 interface AdminUser {
   id: string;
@@ -53,6 +55,7 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [profileForms, setProfileForms] = useState<Record<string, ProfileForm>>({});
   const [passwords, setPasswords] = useState<Record<string, string>>({});
+  const [resets, setResets] = useState<ResetRequest[]>([]);
 
   const authHeaders = useCallback(() => {
     if (!session) return null;
@@ -100,9 +103,45 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
     [authHeaders, dict.admin.error]
   );
 
+  const loadResets = useCallback(async () => {
+    const headers = authHeaders();
+    if (!headers) return;
+    const res = await fetch("/api/admin/password-resets", { headers });
+    if (!res.ok) return;
+    const data = (await res.json()) as { requests: ResetRequest[] };
+    setResets(data.requests);
+  }, [authHeaders]);
+
   useEffect(() => {
-    if (session) loadUsers("");
-  }, [loadUsers, session]);
+    if (session) {
+      loadUsers("");
+      loadResets();
+    }
+  }, [loadResets, loadUsers, session]);
+
+  const handleReset = async (id: string, action: "issue" | "dismiss") => {
+    const headers = authHeaders();
+    if (!headers) return;
+    setBusy(`reset:${id}`);
+    setMessage(null);
+    const res = await fetch("/api/admin/password-resets", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ id, action }),
+    });
+    setBusy(null);
+    if (!res.ok) {
+      setMessage(dict.admin.error);
+      return;
+    }
+    const data = (await res.json()) as { code: string | null };
+    setMessage(
+      data.code
+        ? dict.admin.resetIssued.replace("{code}", data.code)
+        : dict.admin.resetDismissed
+    );
+    await loadResets();
+  };
 
   const search = (e: FormEvent) => {
     e.preventDefault();
@@ -277,6 +316,60 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
 
   return (
     <div className="space-y-6">
+      <section className="panel p-4">
+        <h2 className="font-display text-sm font-bold tracking-wider text-accent-2">
+          {dict.admin.resetQueue}
+        </h2>
+        <p className="mt-1 text-xs text-ink-dim">{dict.admin.resetQueueHint}</p>
+        {resets.length === 0 ? (
+          <p className="mt-3 text-sm text-ink-dim">{dict.admin.resetQueueEmpty}</p>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {resets.map((row) => (
+              <div
+                key={row.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-edge bg-panel px-3 py-2"
+              >
+                <span className="font-semibold text-ink">
+                  {row.display_name || row.handle}
+                </span>
+                <span className="text-xs text-ink-dim">@{row.handle}</span>
+                <span className="font-mono text-xs text-ink-dim">
+                  {row.phone ? displayMyPhone(row.phone) : "—"}
+                </span>
+                <span className="text-xs text-ink-dim">
+                  {dict.admin.resetRequested} {fmtDate(row.created_at, locale)}
+                </span>
+                {row.status === "issued" ? (
+                  <span className="ml-auto text-xs font-semibold text-accent-2">
+                    {dict.admin.resetWaiting}
+                  </span>
+                ) : (
+                  <div className="ml-auto flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleReset(row.id, "issue")}
+                      disabled={busy === `reset:${row.id}`}
+                      className="clip-x bg-accent px-3 py-1.5 font-display text-[11px] font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+                    >
+                      {dict.admin.resetIssue}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleReset(row.id, "dismiss")}
+                      disabled={busy === `reset:${row.id}`}
+                      className="clip-x border border-edge px-3 py-1.5 font-display text-[11px] font-bold tracking-wider text-ink-dim transition enabled:hover:text-atk disabled:opacity-50"
+                    >
+                      {dict.admin.resetDismiss}
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       <form onSubmit={search} className="panel flex flex-col gap-3 p-4 sm:flex-row">
         <input
           value={query}
@@ -301,7 +394,9 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
               dict.admin.profileUpdated,
               dict.admin.passwordUpdated,
               dict.admin.userDeleted,
-            ].includes(message)
+              dict.admin.resetDismissed,
+            ].includes(message) ||
+            message.startsWith(dict.admin.resetIssued.split("{code}")[0])
               ? "text-accent"
               : "text-atk"
           }`}

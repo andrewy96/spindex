@@ -8,6 +8,7 @@ import { supabase, MY_CITIES } from "@/lib/supabase";
 import { normalizeMyPhone } from "@/lib/phone";
 import { isValidHandle, slugifyHandle } from "@/lib/handle";
 import { AVATAR_ACCEPT, AvatarImage, checkAvatarFile, uploadAvatar } from "@/lib/avatar";
+import { HOST_WHATSAPP, normalizeResetCode } from "@/lib/passwordReset";
 import AvatarCropper from "./AvatarCropper";
 import PasswordInput from "./PasswordInput";
 
@@ -95,10 +96,238 @@ export function LoginForm({ locale, dict }: { locale: Locale; dict: Dict }) {
       >
         {dict.auth.submitLogin}
       </button>
+      <p className="text-center text-xs">
+        <Link
+          href={`/${locale}/forgot-password`}
+          className="font-semibold text-ink-dim hover:text-accent"
+        >
+          {dict.auth.forgotPassword}
+        </Link>
+      </p>
       <p className="text-center text-xs text-ink-dim">
         {dict.auth.noAccount}{" "}
         <Link href={`/${locale}/register`} className="font-semibold text-accent hover:underline">
           {dict.auth.register}
+        </Link>
+      </p>
+    </form>
+  );
+}
+
+/**
+ * Asks a superadmin to reset the password. No email is ever collected, so the
+ * temporary password is handed over out of band rather than sent anywhere.
+ */
+export function ForgotPasswordForm({ locale, dict }: { locale: Locale; dict: Dict }) {
+  const [phone, setPhone] = useState("");
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  if (!supabase) return <NotConfigured dict={dict} />;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!normalizeMyPhone(phone)) return setError(dict.auth.phoneInvalid);
+    setBusy(true);
+    const res = await fetch("/api/auth/forgot-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone }),
+    });
+    setBusy(false);
+    if (!res.ok) return setError(dict.auth.forgotFailed);
+    setSent(true);
+  };
+
+  if (sent) {
+    // The host has to hear about it somehow — an admin who never opens the
+    // panel leaves the blader waiting, so hand them straight to WhatsApp.
+    const waText = encodeURIComponent(
+      `SPINDEX password reset — my phone number is ${phone.trim()}`
+    );
+    return (
+      <div className="panel space-y-4 p-6">
+        <p className="text-sm text-ink-dim">{dict.auth.forgotSent}</p>
+        {HOST_WHATSAPP && (
+          <a
+            href={`https://wa.me/${HOST_WHATSAPP}?text=${waText}`}
+            target="_blank"
+            rel="noreferrer"
+            className="clip-x block w-full bg-accent px-6 py-3 text-center font-display text-sm font-bold tracking-wider text-bg transition hover:brightness-110"
+          >
+            {dict.auth.forgotWhatsapp}
+          </a>
+        )}
+        <Link
+          href={`/${locale}/reset-password`}
+          className="clip-x block w-full border border-edge bg-panel px-6 py-3 text-center font-display text-sm font-bold tracking-wider text-ink transition hover:border-accent hover:text-accent"
+        >
+          {dict.auth.forgotHaveCode}
+        </Link>
+        <p className="text-center text-xs text-ink-dim">
+          <Link href={`/${locale}/login`} className="font-semibold text-accent hover:underline">
+            {dict.auth.backToLogin}
+          </Link>
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="panel space-y-4 p-6">
+      <p className="text-sm text-ink-dim">{dict.auth.forgotIntro}</p>
+      <div>
+        <label className={labelCls}>{dict.auth.phone}</label>
+        <input
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder={dict.auth.phonePlaceholder}
+          inputMode="tel"
+          autoComplete="tel"
+          required
+          className={inputCls}
+        />
+      </div>
+      {error && <p className="text-xs font-semibold text-atk">{error}</p>}
+      <button
+        type="submit"
+        disabled={busy}
+        className="clip-x w-full bg-accent px-6 py-3 font-display text-sm font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+      >
+        {dict.auth.forgotSubmit}
+      </button>
+      <p className="text-center text-xs text-ink-dim">
+        <Link
+          href={`/${locale}/reset-password`}
+          className="font-semibold text-accent hover:underline"
+        >
+          {dict.auth.forgotHaveCode}
+        </Link>
+        {" · "}
+        <Link href={`/${locale}/login`} className="font-semibold text-accent hover:underline">
+          {dict.auth.backToLogin}
+        </Link>
+      </p>
+    </form>
+  );
+}
+
+/**
+ * Redeems a one-time code from a host. The code is not a password and never
+ * becomes one — the blader picks their own here, so the account is never left
+ * holding a value somebody else has seen.
+ */
+export function ResetPasswordForm({ locale, dict }: { locale: Locale; dict: Dict }) {
+  const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  if (!supabase) return <NotConfigured dict={dict} />;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!normalizeMyPhone(phone)) return setError(dict.auth.phoneInvalid);
+    if (!normalizeResetCode(code)) return setError(dict.auth.resetInvalid);
+    if (password.length < 8) return setError(dict.auth.passwordMin);
+    if (password !== confirm) return setError(dict.profile.passwordMismatch);
+
+    setBusy(true);
+    const res = await fetch("/api/auth/reset-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, code, password }),
+    });
+    setBusy(false);
+    if (res.status === 400) return setError(dict.auth.resetInvalid);
+    if (!res.ok) return setError(dict.auth.resetFailed);
+    setDone(true);
+  };
+
+  if (done) {
+    return (
+      <div className="panel space-y-4 p-6">
+        <p className="text-sm text-ink-dim">{dict.auth.resetDone}</p>
+        <Link
+          href={`/${locale}/login`}
+          className="clip-x block w-full bg-accent px-6 py-3 text-center font-display text-sm font-bold tracking-wider text-bg transition hover:brightness-110"
+        >
+          {dict.auth.login}
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="panel space-y-4 p-6">
+      <p className="text-sm text-ink-dim">{dict.auth.resetIntro}</p>
+      <div>
+        <label className={labelCls}>{dict.auth.phone}</label>
+        <input
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder={dict.auth.phonePlaceholder}
+          inputMode="tel"
+          autoComplete="tel"
+          required
+          className={inputCls}
+        />
+      </div>
+      <div>
+        <label className={labelCls}>{dict.auth.resetCode}</label>
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
+          placeholder={dict.auth.resetCodePlaceholder}
+          autoComplete="one-time-code"
+          autoCapitalize="characters"
+          spellCheck={false}
+          required
+          className={`${inputCls} font-mono tracking-widest`}
+        />
+      </div>
+      <div>
+        <label className={labelCls}>{dict.profile.newPassword}</label>
+        <PasswordInput
+          dict={dict}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="new-password"
+          required
+          minLength={8}
+          className={inputCls}
+        />
+        <p className="mt-1 text-[11px] text-ink-dim">{dict.auth.passwordMin}</p>
+      </div>
+      <div>
+        <label className={labelCls}>{dict.profile.confirmPassword}</label>
+        <PasswordInput
+          dict={dict}
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          autoComplete="new-password"
+          required
+          minLength={8}
+          className={inputCls}
+        />
+      </div>
+      {error && <p className="text-xs font-semibold text-atk">{error}</p>}
+      <button
+        type="submit"
+        disabled={busy}
+        className="clip-x w-full bg-accent px-6 py-3 font-display text-sm font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+      >
+        {dict.auth.resetSubmit}
+      </button>
+      <p className="text-center text-xs text-ink-dim">
+        <Link href={`/${locale}/login`} className="font-semibold text-accent hover:underline">
+          {dict.auth.backToLogin}
         </Link>
       </p>
     </form>
