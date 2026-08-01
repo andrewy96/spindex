@@ -14,8 +14,9 @@ export function normalizeMyPhone(input: string): string | null {
   return `+60${rest}`;
 }
 
+/** Accepts "+60123456789" and the bare "60123456789" that GoTrue stores. */
 export function displayMyPhone(e164: string): string {
-  const m = /^\+60(1\d{8,9})$/.exec(e164);
+  const m = /^\+?60(1\d{8,9})$/.exec(e164);
   if (!m) return e164;
   const d = m[1];
   return `0${d.slice(0, 2)}-${d.slice(2)}`;
