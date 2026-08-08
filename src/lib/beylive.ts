@@ -3,10 +3,19 @@ import {
   BeyliveMatchPlayer,
   BeyliveTeam,
   CommunityTournament,
+  Finish,
   Profile,
   TournamentPlayer,
 } from "./supabase";
 import { profileDisplayName } from "./profileName";
+
+/** The four scorable finish types, shared by every inline/standalone BEYLIVE scorer. */
+export const BEYLIVE_FINISHES: { key: Finish; label: string; color: string }[] = [
+  { key: "spin", label: "Spin +1", color: "var(--color-sta)" },
+  { key: "over", label: "Over +2", color: "var(--color-def)" },
+  { key: "burst", label: "Burst +2", color: "var(--color-spc)" },
+  { key: "xtreme", label: "Xtreme +3", color: "var(--color-atk)" },
+];
 
 export interface BeyliveStanding {
   id: string;

@@ -9,17 +9,20 @@ import {
   BeyliveMatch,
   BeyliveTeam,
   CommunityTournament,
+  Finish,
   supabase,
   TournamentPlayer,
   TOURNAMENT_SELECT,
 } from "@/lib/supabase";
 import {
+  BEYLIVE_FINISHES,
   beyliveEventId,
   beyliveFormatLabel,
   beyliveGroupPools,
   beyliveKnockoutRoundLabel,
   beyliveParticipantCode,
   beyliveParticipantName,
+  beyliveParticipantWon,
   beylivePlayerCode,
   beyliveQrValue,
   beyliveTeamCode,
@@ -142,6 +145,12 @@ function MatchCard({
   mainRoundSizes,
   locale,
   id,
+  canScore,
+  scoreBusy,
+  onAddPoint,
+  onAddTeamPoint,
+  onUndo,
+  onComplete,
 }: {
   match: BeyliveMatch;
   teamMode: boolean;
@@ -149,8 +158,16 @@ function MatchCard({
   mainRoundSizes: Map<number, number>;
   locale: Locale;
   id: string;
+  canScore: boolean;
+  scoreBusy: string | null;
+  onAddPoint: (matchId: string, userId: string, finish: Finish) => void;
+  onAddTeamPoint: (matchId: string, teamId: string, finish: Finish) => void;
+  onUndo: (matchId: string) => void;
+  onComplete: (matchId: string) => void;
 }) {
   const matchPlayers = [...(match.players ?? [])].sort((a, b) => a.slot_no - b.slot_no);
+  const completed = match.status === "completed";
+  const showScorer = canScore && matchPlayers.length === 2 && !completed;
   return (
     <div className="rounded-md border border-edge bg-panel p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -162,26 +179,81 @@ function MatchCard({
         </span>
       </div>
       <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-        {matchPlayers.map((player) => (
-          <div key={player.team_id ?? player.user_id} className="flex items-center justify-between rounded bg-bg px-2 py-1.5">
-            <span className="min-w-0 truncate text-sm">
-              <span className="mr-2 font-mono text-[11px] text-accent-2">{beyliveParticipantCode(player)}</span>
-              {beyliveParticipantName(player)}
-            </span>
-            <span className="font-display text-xl font-black text-accent">{player.score}</span>
-          </div>
-        ))}
+        {matchPlayers.map((player) => {
+          const won = beyliveParticipantWon(match, player);
+          return (
+            <div
+              key={player.team_id ?? player.user_id}
+              className={`rounded px-2 py-1.5 ${won ? "bg-accent/15" : "bg-bg"}`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="min-w-0 truncate text-sm">
+                  <span className="mr-2 font-mono text-[11px] text-accent-2">{beyliveParticipantCode(player)}</span>
+                  {beyliveParticipantName(player)}
+                </span>
+                <span className={`font-display text-xl font-black ${won ? "text-accent" : ""}`}>{player.score}</span>
+              </div>
+              {showScorer && (
+                <div className="mt-1.5 grid grid-cols-4 gap-1">
+                  {BEYLIVE_FINISHES.map((finish) => {
+                    const key = `${match.id}:${player.team_id ?? player.user_id}:${finish.key}`;
+                    return (
+                      <button
+                        key={finish.key}
+                        onClick={() =>
+                          player.team_id
+                            ? onAddTeamPoint(match.id, player.team_id, finish.key)
+                            : onAddPoint(match.id, player.user_id, finish.key)
+                        }
+                        disabled={!!scoreBusy}
+                        className="rounded border px-1 py-1 font-display text-[9px] font-bold tracking-wide transition enabled:hover:brightness-125 disabled:opacity-35"
+                        style={{
+                          borderColor: `color-mix(in srgb, ${finish.color} 45%, transparent)`,
+                          background:
+                            scoreBusy === key
+                              ? `color-mix(in srgb, ${finish.color} 30%, transparent)`
+                              : `color-mix(in srgb, ${finish.color} 12%, transparent)`,
+                          color: finish.color,
+                        }}
+                      >
+                        {finish.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
+        {showScorer && (
+          <>
+            <button
+              onClick={() => onUndo(match.id)}
+              disabled={!!scoreBusy}
+              className="clip-x border border-edge bg-panel-2 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-ink-dim transition enabled:hover:text-ink disabled:opacity-40"
+            >
+              Undo
+            </button>
+            <button
+              onClick={() => onComplete(match.id)}
+              disabled={!!scoreBusy}
+              className="clip-x border border-accent-2/50 bg-accent-2/10 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-accent-2 transition enabled:hover:bg-accent-2/20 disabled:opacity-40"
+            >
+              Complete
+            </button>
+          </>
+        )}
         <Link
           href={`/${locale}/tournaments/${id}/matches/${match.id}`}
-          className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110"
+          className="clip-x border border-edge bg-panel-2 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink"
         >
-          Score
+          Full view
         </Link>
         <Link
           href={`/${locale}/tournaments/${id}/live`}
-          className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink"
+          className="clip-x border border-edge bg-panel-2 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink"
         >
           View live
         </Link>
@@ -399,6 +471,8 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"start" | "advance" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [scoreBusy, setScoreBusy] = useState<string | null>(null);
+  const [scoreError, setScoreError] = useState<string | null>(null);
   const [scanValue, setScanValue] = useState("");
   const [localPartnerState, setLocalPartnerState] = useState<LocalPartnerState | null>(null);
   const [streamUrl, setStreamUrl] = useState("");
@@ -627,6 +701,47 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
       return;
     }
     load();
+  };
+
+  const runScore = async (busyKey: string, fn: () => PromiseLike<{ error: { message: string } | null }>) => {
+    if (!supabase) return;
+    setScoreBusy(busyKey);
+    setScoreError(null);
+    const { error: err } = await fn();
+    setScoreBusy(null);
+    if (err) {
+      setScoreError(err.message.replace(/_/g, " "));
+      return;
+    }
+    load();
+  };
+
+  const addPoint = (matchId: string, userId: string, finish: Finish) => {
+    const client = supabase;
+    if (!client) return;
+    runScore(`${matchId}:${userId}:${finish}`, () =>
+      client.rpc("record_beylive_point", { mid: matchId, player_id: userId, finish }),
+    );
+  };
+
+  const addTeamPoint = (matchId: string, teamId: string, finish: Finish) => {
+    const client = supabase;
+    if (!client) return;
+    runScore(`${matchId}:${teamId}:${finish}`, () =>
+      client.rpc("record_beylive_team_point", { mid: matchId, p_team_id: teamId, finish }),
+    );
+  };
+
+  const undoMatchPoint = (matchId: string) => {
+    const client = supabase;
+    if (!client) return;
+    runScore(`${matchId}:undo`, () => client.rpc("undo_beylive_point", { mid: matchId }));
+  };
+
+  const completeMatchManually = (matchId: string) => {
+    const client = supabase;
+    if (!client) return;
+    runScore(`${matchId}:complete`, () => client.rpc("complete_beylive_match", { mid: matchId }));
   };
 
   const saveLocalPartnerState = async (nextState: LocalPartnerState) => {
@@ -1028,6 +1143,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
               {localPartnerReady ? localMatches.length : matches.length} matches
             </div>
           </div>
+          {scoreError && <p className="mb-3 text-xs font-semibold text-atk">{scoreError}</p>}
           {matches.length === 0 && localPartnerReady && localPartnerState ? (
             <div className="grid gap-3">
               {localMatches.map((match) => (
@@ -1070,6 +1186,12 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                           mainRoundSizes={mainRoundSizes}
                           locale={locale}
                           id={id}
+                          canScore={isHost}
+                          scoreBusy={scoreBusy}
+                          onAddPoint={addPoint}
+                          onAddTeamPoint={addTeamPoint}
+                          onUndo={undoMatchPoint}
+                          onComplete={completeMatchManually}
                         />
                       ))}
                     </div>
@@ -1089,6 +1211,12 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                         mainRoundSizes={mainRoundSizes}
                         locale={locale}
                         id={id}
+                        canScore={isHost}
+                        scoreBusy={scoreBusy}
+                        onAddPoint={addPoint}
+                        onAddTeamPoint={addTeamPoint}
+                        onUndo={undoMatchPoint}
+                        onComplete={completeMatchManually}
                       />
                     ))}
                   </div>
@@ -1106,6 +1234,12 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                   mainRoundSizes={mainRoundSizes}
                   locale={locale}
                   id={id}
+                  canScore={isHost}
+                  scoreBusy={scoreBusy}
+                  onAddPoint={addPoint}
+                  onAddTeamPoint={addTeamPoint}
+                  onUndo={undoMatchPoint}
+                  onComplete={completeMatchManually}
                 />
               ))}
             </div>

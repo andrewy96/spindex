@@ -12,6 +12,7 @@ import {
   supabase,
 } from "@/lib/supabase";
 import {
+  BEYLIVE_FINISHES,
   beyliveParticipantCode,
   beyliveParticipantName,
   beyliveParticipantQrValue,
@@ -33,12 +34,7 @@ import {
 import { profileDisplayName } from "@/lib/profileName";
 import QrCodeBadge from "./QrCodeBadge";
 
-const FINISHES: { key: Finish; label: string; color: string }[] = [
-  { key: "spin", label: "Spin +1", color: "var(--color-sta)" },
-  { key: "over", label: "Over +2", color: "var(--color-def)" },
-  { key: "burst", label: "Burst +2", color: "var(--color-spc)" },
-  { key: "xtreme", label: "Xtreme +3", color: "var(--color-atk)" },
-];
+const FINISHES = BEYLIVE_FINISHES;
 
 function matchStageLabel(match: BeyliveMatch) {
   if (match.bracket === "grand") return "Championship";
