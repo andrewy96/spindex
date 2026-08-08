@@ -632,22 +632,24 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     }
     return map;
   }, [matches]);
-  const poolMatchGroups = useMemo(() => {
+  const poolRoundGroups = useMemo(() => {
     if (!groupStage) return [];
-    const byPool = new Map<number, BeyliveMatch[]>();
+    const byRound = new Map<number, BeyliveMatch[]>();
     for (const match of matches) {
-      const found = /^pool_(\d+)$/.exec(match.bracket);
-      if (!found) continue;
-      const poolNo = Number(found[1]);
-      const list = byPool.get(poolNo);
+      if (!/^pool_\d+$/.test(match.bracket)) continue;
+      const list = byRound.get(match.round_no);
       if (list) list.push(match);
-      else byPool.set(poolNo, [match]);
+      else byRound.set(match.round_no, [match]);
     }
-    return [...byPool.entries()]
+    return [...byRound.entries()]
       .sort(([a], [b]) => a - b)
-      .map(([poolNo, poolMatches]) => ({
-        poolNo,
-        matches: [...poolMatches].sort((a, b) => a.round_no - b.round_no || a.match_no - b.match_no),
+      .map(([roundNo, roundMatches]) => ({
+        roundNo,
+        matches: [...roundMatches].sort((a, b) => {
+          const poolA = Number(/^pool_(\d+)$/.exec(a.bracket)?.[1] ?? 0);
+          const poolB = Number(/^pool_(\d+)$/.exec(b.bracket)?.[1] ?? 0);
+          return poolA - poolB || a.match_no - b.match_no;
+        }),
       }));
   }, [groupStage, matches]);
   const mainBracketMatches = useMemo(
@@ -1163,21 +1165,19 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
             <p className="py-12 text-center text-sm text-ink-dim">Start BEYLIVE to generate matches from the existing tournament format.</p>
           ) : groupStage ? (
             <div className="grid gap-4">
-              {poolMatchGroups.map(({ poolNo, matches: poolMatches }) => {
-                const pending = poolMatches.filter((m) => m.status !== "completed" && m.status !== "cancelled").length;
-                const needsAttention = poolMatches.some(
-                  (m) => m.round_no === currentRound && m.status !== "completed" && m.status !== "cancelled",
-                );
+              {poolRoundGroups.map(({ roundNo, matches: roundMatches }) => {
+                const pending = roundMatches.filter((m) => m.status !== "completed" && m.status !== "cancelled").length;
+                const needsAttention = roundNo === currentRound;
                 return (
-                  <details key={poolNo} open={needsAttention} className="group rounded-md border border-edge">
+                  <details key={roundNo} open={needsAttention} className="group rounded-md border border-edge">
                     <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 font-display text-xs font-bold tracking-wider text-accent-2">
-                      <span>Pool {poolNo}</span>
+                      <span>Round {roundNo}</span>
                       <span className="font-normal text-ink-dim">
-                        {pending === 0 ? "all matches done" : `${pending} left · ${poolMatches.length} total`}
+                        {pending === 0 ? "all matches done" : `${pending} left · ${roundMatches.length} total`}
                       </span>
                     </summary>
                     <div className="grid gap-3 p-3 pt-0">
-                      {poolMatches.map((match) => (
+                      {roundMatches.map((match) => (
                         <MatchCard
                           key={match.id}
                           match={match}
