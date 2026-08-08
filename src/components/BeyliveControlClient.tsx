@@ -135,6 +135,61 @@ function matchStageLabel(
   return `Round ${match.round_no}`;
 }
 
+function MatchCard({
+  match,
+  teamMode,
+  groupStage,
+  mainRoundSizes,
+  locale,
+  id,
+}: {
+  match: BeyliveMatch;
+  teamMode: boolean;
+  groupStage: boolean;
+  mainRoundSizes: Map<number, number>;
+  locale: Locale;
+  id: string;
+}) {
+  const matchPlayers = [...(match.players ?? [])].sort((a, b) => a.slot_no - b.slot_no);
+  return (
+    <div className="rounded-md border border-edge bg-panel p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs font-semibold text-ink-dim">
+          {matchStageLabel(match, teamMode, groupStage, mainRoundSizes)} · Table {match.table_no ?? match.match_no} · Match {match.match_no}
+        </div>
+        <span className={`text-xs font-bold ${match.status === "live" ? "text-accent" : "text-ink-dim"}`}>
+          {match.status}
+        </span>
+      </div>
+      <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+        {matchPlayers.map((player) => (
+          <div key={player.team_id ?? player.user_id} className="flex items-center justify-between rounded bg-bg px-2 py-1.5">
+            <span className="min-w-0 truncate text-sm">
+              <span className="mr-2 font-mono text-[11px] text-accent-2">{beyliveParticipantCode(player)}</span>
+              {beyliveParticipantName(player)}
+            </span>
+            <span className="font-display text-xl font-black text-accent">{player.score}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Link
+          href={`/${locale}/tournaments/${id}/matches/${match.id}`}
+          className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110"
+        >
+          Score
+        </Link>
+        <Link
+          href={`/${locale}/tournaments/${id}/live`}
+          className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink"
+        >
+          View live
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 function matchTeams(matches: BeyliveMatch[]) {
   const map = new Map<string, BeyliveTeam>();
   for (const match of matches) {
@@ -503,6 +558,31 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     }
     return map;
   }, [matches]);
+  const poolMatchGroups = useMemo(() => {
+    if (!groupStage) return [];
+    const byPool = new Map<number, BeyliveMatch[]>();
+    for (const match of matches) {
+      const found = /^pool_(\d+)$/.exec(match.bracket);
+      if (!found) continue;
+      const poolNo = Number(found[1]);
+      const list = byPool.get(poolNo);
+      if (list) list.push(match);
+      else byPool.set(poolNo, [match]);
+    }
+    return [...byPool.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([poolNo, poolMatches]) => ({
+        poolNo,
+        matches: [...poolMatches].sort((a, b) => a.round_no - b.round_no || a.match_no - b.match_no),
+      }));
+  }, [groupStage, matches]);
+  const mainBracketMatches = useMemo(
+    () =>
+      matches
+        .filter((m) => m.bracket === "main")
+        .sort((a, b) => a.round_no - b.round_no || a.match_no - b.match_no),
+    [matches],
+  );
   const teams = useMemo(
     () => {
       const byId = new Map<string, BeyliveTeam>();
@@ -965,48 +1045,69 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
             </div>
           ) : matches.length === 0 ? (
             <p className="py-12 text-center text-sm text-ink-dim">Start BEYLIVE to generate matches from the existing tournament format.</p>
-          ) : (
-            <div className="grid gap-3">
-              {matches.map((match) => {
-                const matchPlayers = [...(match.players ?? [])].sort((a, b) => a.slot_no - b.slot_no);
+          ) : groupStage ? (
+            <div className="grid gap-4">
+              {poolMatchGroups.map(({ poolNo, matches: poolMatches }) => {
+                const pending = poolMatches.filter((m) => m.status !== "completed" && m.status !== "cancelled").length;
+                const needsAttention = poolMatches.some(
+                  (m) => m.round_no === currentRound && m.status !== "completed" && m.status !== "cancelled",
+                );
                 return (
-                  <div key={match.id} className="rounded-md border border-edge bg-panel p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-xs font-semibold text-ink-dim">
-                        {matchStageLabel(match, teamMode, groupStage, mainRoundSizes)} · Table {match.table_no ?? match.match_no} · Match {match.match_no}
-                      </div>
-                      <span className={`text-xs font-bold ${match.status === "live" ? "text-accent" : "text-ink-dim"}`}>
-                        {match.status}
+                  <details key={poolNo} open={needsAttention} className="group rounded-md border border-edge">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 font-display text-xs font-bold tracking-wider text-accent-2">
+                      <span>Pool {poolNo}</span>
+                      <span className="font-normal text-ink-dim">
+                        {pending === 0 ? "all matches done" : `${pending} left · ${poolMatches.length} total`}
                       </span>
-                    </div>
-                    <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-                      {matchPlayers.map((player) => (
-                        <div key={player.team_id ?? player.user_id} className="flex items-center justify-between rounded bg-bg px-2 py-1.5">
-                          <span className="min-w-0 truncate text-sm">
-                            <span className="mr-2 font-mono text-[11px] text-accent-2">{beyliveParticipantCode(player)}</span>
-                            {beyliveParticipantName(player)}
-                          </span>
-                          <span className="font-display text-xl font-black text-accent">{player.score}</span>
-                        </div>
+                    </summary>
+                    <div className="grid gap-3 p-3 pt-0">
+                      {poolMatches.map((match) => (
+                        <MatchCard
+                          key={match.id}
+                          match={match}
+                          teamMode={teamMode}
+                          groupStage={groupStage}
+                          mainRoundSizes={mainRoundSizes}
+                          locale={locale}
+                          id={id}
+                        />
                       ))}
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Link
-                        href={`/${locale}/tournaments/${id}/matches/${match.id}`}
-                        className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110"
-                      >
-                        Score
-                      </Link>
-                      <Link
-                        href={`/${locale}/tournaments/${id}/live`}
-                        className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink"
-                      >
-                        View live
-                      </Link>
-                    </div>
-                  </div>
+                  </details>
                 );
               })}
+              {mainBracketMatches.length > 0 && (
+                <div className="rounded-md border border-accent/40">
+                  <div className="px-3 py-2.5 font-display text-xs font-bold tracking-wider text-accent">Knockout bracket</div>
+                  <div className="grid gap-3 p-3 pt-0">
+                    {mainBracketMatches.map((match) => (
+                      <MatchCard
+                        key={match.id}
+                        match={match}
+                        teamMode={teamMode}
+                        groupStage={groupStage}
+                        mainRoundSizes={mainRoundSizes}
+                        locale={locale}
+                        id={id}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {matches.map((match) => (
+                <MatchCard
+                  key={match.id}
+                  match={match}
+                  teamMode={teamMode}
+                  groupStage={groupStage}
+                  mainRoundSizes={mainRoundSizes}
+                  locale={locale}
+                  id={id}
+                />
+              ))}
             </div>
           )}
         </section>
