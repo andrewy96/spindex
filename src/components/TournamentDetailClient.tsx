@@ -49,6 +49,9 @@ export default function TournamentDetailClient({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [partnerRoster, setPartnerRoster] = useState<{ id: string; name: string }[]>([]);
+  const [walkinName, setWalkinName] = useState("");
+  const [rosterBusy, setRosterBusy] = useState(false);
+  const [rosterError, setRosterError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [city, setCity] = useState("Kuala Lumpur");
@@ -179,6 +182,57 @@ export default function TournamentDetailClient({
     await supabase.from("tournaments").update({ status: "cancelled" }).eq("id", item.id);
     setBusy(false);
     load();
+  };
+
+  const addWalkin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase || !isHost) return;
+    const cleanName = walkinName.trim();
+    if (!cleanName) return;
+    setRosterBusy(true);
+    setRosterError(null);
+    const { error: err } = await supabase.rpc("add_tournament_walkin", { tid: item?.id, p_name: cleanName });
+    setRosterBusy(false);
+    if (err) {
+      setRosterError(err.message.replace(/_/g, " "));
+      return;
+    }
+    setWalkinName("");
+    load();
+  };
+
+  const removePlayer = async (userId: string) => {
+    if (!supabase || !isHost || !item) return;
+    setRosterBusy(true);
+    setRosterError(null);
+    const { error: err } = await supabase.rpc("remove_tournament_player", { tid: item.id, p_user_id: userId });
+    setRosterBusy(false);
+    if (err) setRosterError(err.message.replace(/_/g, " "));
+    else load();
+  };
+
+  const drawPools = async () => {
+    if (!supabase || !isHost || !item) return;
+    setRosterBusy(true);
+    setRosterError(null);
+    const { error: err } = await supabase.rpc("draw_group_stage_pools", { tid: item.id });
+    setRosterBusy(false);
+    if (err) setRosterError(err.message.replace(/_/g, " "));
+    else load();
+  };
+
+  const setPlayerPool = async (userId: string, poolNo: number | null) => {
+    if (!supabase || !isHost || !item) return;
+    setRosterBusy(true);
+    setRosterError(null);
+    const { error: err } = await supabase.rpc("set_tournament_player_pool", {
+      tid: item.id,
+      p_user_id: userId,
+      p_pool_no: poolNo,
+    });
+    setRosterBusy(false);
+    if (err) setRosterError(err.message.replace(/_/g, " "));
+    else load();
   };
 
   const save = async (e: React.FormEvent) => {
@@ -333,6 +387,25 @@ export default function TournamentDetailClient({
 
           <div className="panel p-5">
             <div className="mb-3 font-display text-sm font-bold tracking-wider text-ink-dim">{t.lineup}</div>
+            {isHost && item.status === "open" && item.format !== "partner" && (
+              <form onSubmit={addWalkin} className="mb-3 flex gap-2">
+                <input
+                  value={walkinName}
+                  onChange={(e) => setWalkinName(e.target.value)}
+                  placeholder="Add player by name (no account needed)"
+                  maxLength={60}
+                  className={`${inputCls} text-xs`}
+                />
+                <button
+                  type="submit"
+                  disabled={rosterBusy || !walkinName.trim()}
+                  className="clip-x shrink-0 bg-accent px-3 py-2 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+                >
+                  Add
+                </button>
+              </form>
+            )}
+            {rosterError && <p className="mb-2 text-xs font-semibold text-atk">{rosterError}</p>}
             {item.format === "partner" ? (
               partnerRoster.length === 0 ? (
                 <p className="text-sm text-ink-dim">{t.noPlayers}</p>
@@ -350,11 +423,32 @@ export default function TournamentDetailClient({
             ) : (
               <ol className="space-y-1 text-sm text-ink-dim">
                 {joined.map((p, i) => (
-                  <li key={p.user_id} className="rounded bg-panel px-2 py-1">
-                    #{p.seed ?? i + 1} {profileDisplayName(p.profile)}
-                    <span className="ml-2 font-mono text-[10px] text-accent-2">
-                      {p.profile?.player_code ?? ""}
+                  <li key={p.user_id} className="flex items-center justify-between gap-2 rounded bg-panel px-2 py-1">
+                    <span className="min-w-0 truncate">
+                      #{p.seed ?? i + 1} {profileDisplayName(p.profile)}
+                      <span className="ml-2 font-mono text-[10px] text-accent-2">
+                        {p.profile?.player_code ?? ""}
+                      </span>
+                      {p.profile?.is_walkin && (
+                        <span className="ml-2 rounded bg-panel-2 px-1.5 py-0.5 text-[9px] font-semibold text-ink-dim">
+                          walk-in
+                        </span>
+                      )}
+                      {item.format === "group_stage" && p.pool_no != null && (
+                        <span className="ml-2 rounded bg-accent/10 px-1.5 py-0.5 text-[9px] font-semibold text-accent">
+                          Pool {p.pool_no}
+                        </span>
+                      )}
                     </span>
+                    {isHost && item.status === "open" && (
+                      <button
+                        onClick={() => removePlayer(p.user_id)}
+                        disabled={rosterBusy}
+                        className="shrink-0 text-[10px] font-semibold text-ink-dim underline decoration-dotted transition hover:text-atk disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    )}
                   </li>
                 ))}
               </ol>
@@ -364,8 +458,17 @@ export default function TournamentDetailClient({
                 <div className="mb-2 mt-4 font-display text-xs font-bold tracking-wider text-ink-dim">{t.hostWaitlisted}</div>
                 <ol className="space-y-1 text-xs text-ink-dim">
                   {waitlisted.map((p) => (
-                    <li key={p.user_id} className="rounded bg-panel px-2 py-1">
-                      {profileDisplayName(p.profile)}
+                    <li key={p.user_id} className="flex items-center justify-between gap-2 rounded bg-panel px-2 py-1">
+                      <span className="min-w-0 truncate">{profileDisplayName(p.profile)}</span>
+                      {isHost && item.status === "open" && (
+                        <button
+                          onClick={() => removePlayer(p.user_id)}
+                          disabled={rosterBusy}
+                          className="shrink-0 text-[10px] font-semibold text-ink-dim underline decoration-dotted transition hover:text-atk disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ol>
@@ -373,6 +476,85 @@ export default function TournamentDetailClient({
             )}
           </div>
         </div>
+
+        {item.format === "group_stage" && item.status === "open" && (
+          <div className="panel mt-6 p-5">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="font-display text-sm font-bold tracking-wider text-ink-dim">Pools</div>
+                <p className="mt-1 text-xs text-ink-dim">
+                  Splits joined players into 8 pools and keeps same-club players apart where possible. Safe to
+                  re-draw after adding more players — anyone already placed (including hand-moved players) stays put.
+                </p>
+              </div>
+              {isHost && (
+                <button
+                  onClick={drawPools}
+                  disabled={rosterBusy}
+                  className="clip-x shrink-0 bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+                >
+                  Draw pools
+                </button>
+              )}
+            </div>
+            {joined.some((p) => p.pool_no != null) ? (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {Array.from({ length: 8 }, (_, i) => i + 1).map((poolNo) => {
+                  const members = joined.filter((p) => p.pool_no === poolNo);
+                  if (members.length === 0) return null;
+                  return (
+                    <div key={poolNo} className="rounded-md border border-edge bg-panel p-3">
+                      <div className="mb-2 font-display text-xs font-bold tracking-wider text-accent-2">
+                        Pool {poolNo}
+                      </div>
+                      <div className="grid gap-1.5">
+                        {members.map((p) => (
+                          <div key={p.user_id} className="flex items-center justify-between gap-2 text-xs">
+                            <span className="min-w-0 truncate text-ink-dim">{profileDisplayName(p.profile)}</span>
+                            {isHost && (
+                              <select
+                                value={poolNo}
+                                onChange={(e) => setPlayerPool(p.user_id, Number(e.target.value))}
+                                disabled={rosterBusy}
+                                className="shrink-0 rounded border border-edge bg-panel-2 px-1 py-0.5 text-[10px] outline-none focus:border-accent disabled:opacity-50"
+                              >
+                                {Array.from({ length: 8 }, (_, i) => i + 1).map((n) => (
+                                  <option key={n} value={n}>
+                                    Pool {n}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+                {joined.some((p) => p.pool_no == null) && (
+                  <div className="rounded-md border border-dashed border-edge bg-panel p-3">
+                    <div className="mb-2 font-display text-xs font-bold tracking-wider text-ink-dim">Not yet placed</div>
+                    <div className="grid gap-1.5">
+                      {joined
+                        .filter((p) => p.pool_no == null)
+                        .map((p) => (
+                          <div key={p.user_id} className="text-xs text-ink-dim">
+                            {profileDisplayName(p.profile)}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-ink-dim">
+                {joined.length < 16
+                  ? `Need at least 16 joined players to draw pools (${joined.length}/16).`
+                  : 'No pools drawn yet — click "Draw pools" to split the lineup into 8 groups.'}
+              </p>
+            )}
+          </div>
+        )}
 
         {item.format === "partner" && (
           <div className="mt-6">

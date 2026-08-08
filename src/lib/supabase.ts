@@ -17,6 +17,8 @@ export interface Profile {
   stars: number;
   wins: number;
   losses: number;
+  /** True for a host-added walk-in with no login (no email/phone, created via add_tournament_walkin). */
+  is_walkin: boolean;
   created_at: string;
 }
 
