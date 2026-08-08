@@ -462,6 +462,8 @@
     "hostFormatLeaderboardDesc": "Rank players by points or results.",
     "hostFormatPartner": "Partner battle",
     "hostFormatPartnerDesc": "Random 2-blader teams drawn on a wheel, league rounds, then title and consolation playoffs.",
+    "hostFormatGroupStage": "Group stage",
+    "hostFormatGroupStageDesc": "8 pools of 4-5, round robin within each pool, top 2 advance to a Round of 16 knockout.",
     "hostNote": "Note",
     "hostError": "Something went wrong. Try again.",
     "hostEmpty": "No community tournaments yet.",

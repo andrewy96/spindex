@@ -114,13 +114,16 @@ export type TournamentFormat =
   | "swiss"
   | "free_for_all"
   | "leaderboard"
-  | "partner";
+  | "partner"
+  | "group_stage";
 
 export interface TournamentPlayer {
   tournament_id: string;
   user_id: string;
   status: "joined" | "waitlisted";
   seed: number | null;
+  /** Group-stage pool (1-8) once assign_group_stage_pools runs; null for every other format. */
+  pool_no: number | null;
   created_at: string;
   profile?: Profile;
 }
@@ -178,7 +181,7 @@ export interface CommunityTournament {
   teams?: BeyliveTeam[];
 }
 
-export type BeyliveBracket = "main" | "losers" | "grand" | "leaderboard";
+export type BeyliveBracket = "main" | "losers" | "grand" | "leaderboard" | `pool_${number}`;
 export type BeyliveMatchStatus = "scheduled" | "live" | "completed" | "cancelled" | "bye";
 export type BeylivePlayerResult = "pending" | "win" | "loss";
 

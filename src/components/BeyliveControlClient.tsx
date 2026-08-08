@@ -16,6 +16,8 @@ import {
 import {
   beyliveEventId,
   beyliveFormatLabel,
+  beyliveGroupPools,
+  beyliveKnockoutRoundLabel,
   beyliveParticipantCode,
   beyliveParticipantName,
   beylivePlayerCode,
@@ -25,6 +27,7 @@ import {
   beyliveTeamQrValue,
   findBeyliveTeamByScan,
   findTournamentPlayerByScan,
+  isBeyliveGroupStageTournament,
   isBeyliveTeamTournament,
 } from "@/lib/beylive";
 import {
@@ -113,11 +116,23 @@ function TeamRow({
   );
 }
 
-function matchStageLabel(match: BeyliveMatch, teamMode: boolean) {
-  if (!teamMode) return `Round ${match.round_no}`;
-  if (match.bracket === "grand") return "Championship";
-  if (match.bracket === "losers") return "Consolation";
-  return `League R${match.round_no}`;
+function matchStageLabel(
+  match: BeyliveMatch,
+  teamMode: boolean,
+  groupStage: boolean,
+  mainRoundSizes: Map<number, number>,
+) {
+  if (teamMode) {
+    if (match.bracket === "grand") return "Championship";
+    if (match.bracket === "losers") return "Consolation";
+    return `League R${match.round_no}`;
+  }
+  if (groupStage) {
+    const poolMatch = /^pool_(\d+)$/.exec(match.bracket);
+    if (poolMatch) return `Pool ${poolMatch[1]} · Round ${match.round_no}`;
+    if (match.bracket === "main") return beyliveKnockoutRoundLabel(mainRoundSizes.get(match.round_no) ?? 0);
+  }
+  return `Round ${match.round_no}`;
 }
 
 function matchTeams(matches: BeyliveMatch[]) {
@@ -478,6 +493,16 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     [players, scanValue],
   );
   const teamMode = isBeyliveTeamTournament(tournament);
+  const groupStage = isBeyliveGroupStageTournament(tournament);
+  const groupPools = useMemo(() => beyliveGroupPools(tournament, matches), [tournament, matches]);
+  const mainRoundSizes = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const match of matches) {
+      if (match.bracket !== "main") continue;
+      map.set(match.round_no, (map.get(match.round_no) ?? 0) + 1);
+    }
+    return map;
+  }, [matches]);
   const teams = useMemo(
     () => {
       const byId = new Map<string, BeyliveTeam>();
@@ -806,6 +831,36 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
         )}
       </section>
 
+      {groupStage && groupPools.length > 0 && (
+        <section className="panel mt-4 p-5">
+          <div className="mb-3 font-display text-sm font-bold tracking-wider text-ink-dim">
+            Pool standings <span className="font-normal text-ink-dim">(top 2 advance)</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {groupPools.map(({ poolNo, standings }) => (
+              <div key={poolNo} className="rounded-md border border-edge bg-panel p-3">
+                <div className="mb-2 font-display text-xs font-bold tracking-wider text-accent-2">Pool {poolNo}</div>
+                <div className="grid gap-1">
+                  {standings.map((row, index) => (
+                    <div
+                      key={row.id}
+                      className={`flex items-center justify-between rounded px-2 py-1 text-xs ${
+                        index < 2 ? "bg-accent/10 text-accent" : "text-ink-dim"
+                      }`}
+                    >
+                      <span className="min-w-0 truncate">
+                        {index + 1}. {row.name}
+                      </span>
+                      <span className="ml-2 shrink-0 font-mono">{row.wins}-{row.losses}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <div className="mt-4 grid gap-4 lg:grid-cols-[0.85fr_1.35fr]">
         <aside className="grid gap-4">
           <BeyliveScanner
@@ -918,7 +973,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                   <div key={match.id} className="rounded-md border border-edge bg-panel p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="text-xs font-semibold text-ink-dim">
-                        {matchStageLabel(match, teamMode)} · Table {match.table_no ?? match.match_no} · Match {match.match_no}
+                        {matchStageLabel(match, teamMode, groupStage, mainRoundSizes)} · Table {match.table_no ?? match.match_no} · Match {match.match_no}
                       </div>
                       <span className={`text-xs font-bold ${match.status === "live" ? "text-accent" : "text-ink-dim"}`}>
                         {match.status}

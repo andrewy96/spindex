@@ -462,6 +462,8 @@
     "hostFormatLeaderboardDesc": "按积分或结果排名。",
     "hostFormatPartner": "双人组队赛",
     "hostFormatPartnerDesc": "转盘随机抽 2 人组队，联赛循环后进入冠军和安慰赛。",
+    "hostFormatGroupStage": "小组赛",
+    "hostFormatGroupStageDesc": "分成 8 个 4-5 人小组，组内循环赛，各组前 2 名晋级 16 强淘汰赛。",
     "hostNote": "备注",
     "hostError": "出错了，请重试。",
     "hostEmpty": "暂无社群赛事。",

@@ -68,6 +68,7 @@ export default function TournamentDetailClient({
         { key: "free_for_all", label: t.hostFormatFreeForAll },
         { key: "leaderboard", label: t.hostFormatLeaderboard },
         { key: "partner", label: t.hostFormatPartner },
+        { key: "group_stage", label: t.hostFormatGroupStage },
       ] as const,
     [t]
   );

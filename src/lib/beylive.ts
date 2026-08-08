@@ -104,6 +104,10 @@ export function isBeyliveTeamTournament(tournament: CommunityTournament | null |
   return tournament?.format === "partner";
 }
 
+export function isBeyliveGroupStageTournament(tournament: CommunityTournament | null | undefined) {
+  return tournament?.format === "group_stage";
+}
+
 export function beyliveTeamCode(team: BeyliveTeam | null | undefined) {
   if (!team) return "T??";
   return team.team_code || `T${String(team.team_no).padStart(2, "0")}`;
@@ -259,6 +263,102 @@ export function beyliveStandings(
       a.losses - b.losses ||
       a.event_id.localeCompare(b.event_id),
   );
+}
+
+export interface BeyliveGroupPool {
+  poolNo: number;
+  standings: BeyliveStanding[];
+}
+
+/**
+ * Per-pool standings for a group_stage tournament, computed only from that
+ * pool's own bracket ("pool_1".."pool_8") — the top 2 rows of each pool are
+ * the players advancing to the knockout bracket.
+ */
+export function beyliveGroupPools(
+  tournament: CommunityTournament | null,
+  matches: BeyliveMatch[],
+): BeyliveGroupPool[] {
+  const players = (tournament?.players ?? []).filter(
+    (player) => player.status === "joined" && player.pool_no != null,
+  );
+  if (players.length === 0) return [];
+
+  const playersByPool = new Map<number, TournamentPlayer[]>();
+  for (const player of players) {
+    const poolNo = player.pool_no as number;
+    const list = playersByPool.get(poolNo);
+    if (list) list.push(player);
+    else playersByPool.set(poolNo, [player]);
+  }
+
+  const matchesByPool = new Map<number, BeyliveMatch[]>();
+  for (const match of matches) {
+    const found = /^pool_(\d+)$/.exec(match.bracket);
+    if (!found) continue;
+    const poolNo = Number(found[1]);
+    const list = matchesByPool.get(poolNo);
+    if (list) list.push(match);
+    else matchesByPool.set(poolNo, [match]);
+  }
+
+  return [...playersByPool.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([poolNo, poolPlayers]) => {
+      const sortedPlayers = [...poolPlayers].sort(
+        (a, b) => (a.seed ?? 999999) - (b.seed ?? 999999),
+      );
+      const rows = new Map<string, BeyliveStanding>();
+      sortedPlayers.forEach((player, index) => {
+        rows.set(player.user_id, {
+          id: player.user_id,
+          user_id: player.user_id,
+          team_id: null,
+          is_team: false,
+          event_id: beyliveEventId(player, index),
+          player_code: beylivePlayerCode(player.profile),
+          name: profileDisplayName(player.profile),
+          wins: 0,
+          losses: 0,
+          points: 0,
+          against: 0,
+          diff: 0,
+          profile: player.profile,
+        });
+      });
+
+      for (const match of matchesByPool.get(poolNo) ?? []) {
+        if (match.status !== "completed" || !match.players || match.players.length < 2) continue;
+        const total = match.players.reduce((sum, player) => sum + player.score, 0);
+        for (const player of match.players) {
+          const row = rows.get(player.user_id);
+          if (!row) continue;
+          if (match.winner_id === player.user_id || player.result === "win") row.wins += 1;
+          else row.losses += 1;
+          row.points += player.score;
+          row.against += total - player.score;
+          row.diff = row.points - row.against;
+        }
+      }
+
+      const standings = [...rows.values()].sort(
+        (a, b) =>
+          b.wins - a.wins ||
+          b.diff - a.diff ||
+          b.points - a.points ||
+          a.losses - b.losses ||
+          a.event_id.localeCompare(b.event_id),
+      );
+      return { poolNo, standings };
+    });
+}
+
+/** Knockout round name from how many matches are in it: 8 -> "Round of 16", 1 -> "Final". */
+export function beyliveKnockoutRoundLabel(matchCountInRound: number) {
+  if (matchCountInRound <= 1) return "Final";
+  if (matchCountInRound === 2) return "Semifinal";
+  if (matchCountInRound === 4) return "Quarterfinal";
+  return `Round of ${matchCountInRound * 2}`;
 }
 
 export function findBeyliveTeamByScan(teams: BeyliveTeam[], raw: string): BeyliveTeam | null {

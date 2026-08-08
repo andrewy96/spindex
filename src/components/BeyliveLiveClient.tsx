@@ -12,12 +12,15 @@ import {
 } from "@/lib/supabase";
 import {
   beyliveFormatLabel,
+  beyliveGroupPools,
+  beyliveKnockoutRoundLabel,
   beyliveParticipantCode,
   beyliveParticipantName,
   beyliveParticipantWon,
   beyliveTeamCode,
   beyliveTeamMembers,
   beyliveTeamName,
+  isBeyliveGroupStageTournament,
   isBeyliveTeamTournament,
   beyliveEventId,
   beylivePlayerCode,
@@ -52,22 +55,35 @@ function groupByRound(matches: BeyliveMatch[]) {
   return [...map.entries()].sort((a, b) => a[0] - b[0]);
 }
 
-function roundTitle(roundNo: number, matches: BeyliveMatch[], teamMode: boolean) {
-  if (!teamMode) return `Round ${roundNo}`;
-  const hasChampionship = matches.some((match) => match.bracket === "grand");
-  const hasConsolation = matches.some((match) => match.bracket === "losers");
-  if (hasChampionship && hasConsolation) return "Playoffs";
-  if (hasChampionship) return "Championship";
-  if (hasConsolation) return "Consolation";
-  return `League Round ${roundNo}`;
+function roundTitle(roundNo: number, matches: BeyliveMatch[], teamMode: boolean, groupStage: boolean) {
+  if (teamMode) {
+    const hasChampionship = matches.some((match) => match.bracket === "grand");
+    const hasConsolation = matches.some((match) => match.bracket === "losers");
+    if (hasChampionship && hasConsolation) return "Playoffs";
+    if (hasChampionship) return "Championship";
+    if (hasConsolation) return "Consolation";
+    return `League Round ${roundNo}`;
+  }
+  if (groupStage) {
+    const hasPools = matches.some((match) => /^pool_\d+$/.test(match.bracket));
+    if (hasPools) return `Group stage · Round ${roundNo}`;
+    if (matches.some((match) => match.bracket === "main")) return beyliveKnockoutRoundLabel(matches.length);
+  }
+  return `Round ${roundNo}`;
+}
+
+function poolLabel(match: BeyliveMatch) {
+  const found = /^pool_(\d+)$/.exec(match.bracket);
+  return found ? `Pool ${found[1]}` : null;
 }
 
 function MatchCard({ match }: { match: BeyliveMatch }) {
   const players = [...(match.players ?? [])].sort((a, b) => a.slot_no - b.slot_no);
+  const pool = poolLabel(match);
   return (
     <div className={`rounded-md border p-3 ${match.status === "live" ? "border-accent bg-accent/10" : "border-edge bg-panel"}`}>
       <div className="mb-2 flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-ink-dim">
-        <span>Table {match.table_no ?? match.match_no} · Match {match.match_no}</span>
+        <span>{pool ? `${pool} · ` : ""}Table {match.table_no ?? match.match_no} · Match {match.match_no}</span>
         <span className={match.status === "live" ? "text-accent" : match.status === "completed" ? "text-accent-2" : ""}>
           {beyliveStatusLabel(match.status)}
         </span>
@@ -325,6 +341,8 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
 
   const dbStandings = useMemo(() => beyliveStandings(tournament, matches), [matches, tournament]);
   const rounds = useMemo(() => groupByRound(matches), [matches]);
+  const groupStage = isBeyliveGroupStageTournament(tournament);
+  const groupPools = useMemo(() => beyliveGroupPools(tournament, matches), [tournament, matches]);
   const streamFeeds = useMemo<StreamFeed[]>(() => {
     if (!tournament) return [];
     const stadiumFeeds = [
@@ -447,6 +465,36 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
 
       <StreamPanel feeds={streamFeeds} hostName={hostName} />
 
+      {groupStage && groupPools.length > 0 && (
+        <section className="panel mt-4 p-5">
+          <div className="mb-3 font-display text-sm font-bold tracking-wider text-ink-dim">
+            Pool standings <span className="font-normal text-ink-dim">(top 2 advance)</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {groupPools.map(({ poolNo, standings }) => (
+              <div key={poolNo} className="rounded-md border border-edge bg-panel p-3">
+                <div className="mb-2 font-display text-xs font-bold tracking-wider text-accent-2">Pool {poolNo}</div>
+                <div className="grid gap-1">
+                  {standings.map((row, index) => (
+                    <div
+                      key={row.id}
+                      className={`flex items-center justify-between rounded px-2 py-1 text-xs ${
+                        index < 2 ? "bg-accent/10 text-accent" : "text-ink-dim"
+                      }`}
+                    >
+                      <span className="min-w-0 truncate">
+                        {index + 1}. {row.name}
+                      </span>
+                      <span className="ml-2 shrink-0 font-mono">{row.wins}-{row.losses}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <div className="mt-4 grid gap-4 lg:grid-cols-[1.45fr_0.85fr]">
         <div className="grid gap-4">
           {localPartnerReady ? (
@@ -473,7 +521,7 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
             rounds.map(([roundNo, roundMatches]) => (
               <section key={roundNo} className="panel p-5">
                 <div className="mb-3 font-display text-sm font-bold tracking-wider text-ink-dim">
-                  {roundTitle(roundNo, roundMatches, teamMode)}
+                  {roundTitle(roundNo, roundMatches, teamMode, groupStage)}
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {roundMatches.map((match) => (
