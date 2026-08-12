@@ -317,35 +317,19 @@ export const VARIANTS: DesignVariant[] = [
   },
 ];
 
-/* ---------- main renderer ---------- */
+/* ---------- shared chrome (background / frame / footer) ---------- */
 
-export function renderShareCard(
-  canvas: HTMLCanvasElement,
-  data: ShareCardData,
-  seed: number,
-): void {
-  canvas.width = CARD_W;
-  canvas.height = CARD_H;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-
+/** Background, vignette, and notched frame shared by every card variant. */
+function drawCardChrome(ctx: CanvasRenderingContext2D, seed: number) {
   const rng = mulberry32(seed);
   const variant = VARIANTS[Math.floor(rng() * VARIANTS.length)];
   const display = displayFamily();
   const body = bodyFamily();
-  const outcomeColor =
-    data.outcome === "victory"
-      ? THEME.accent
-      : data.outcome === "defeat"
-        ? THEME.atk
-        : THEME.accent2;
 
-  /* background */
   ctx.fillStyle = THEME.bg;
   ctx.fillRect(0, 0, CARD_W, CARD_H);
   variant.paint(ctx, rng);
 
-  /* vignette */
   const vg = ctx.createLinearGradient(0, 0, 0, CARD_H);
   vg.addColorStop(0, "rgba(0,0,0,0.34)");
   vg.addColorStop(0.22, "rgba(0,0,0,0)");
@@ -370,6 +354,65 @@ export function renderShareCard(
 
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
+
+  return { rng, variant, display, body };
+}
+
+/** Watermark footer (wordmark + site URL) shared by every card variant. */
+function drawCardFooter(ctx: CanvasRenderingContext2D, url: string, display: string, body: string) {
+  ctx.strokeStyle = THEME.edge;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(72, 1196);
+  ctx.lineTo(CARD_W - 72, 1196);
+  ctx.stroke();
+
+  if (logoImage) {
+    const logoH = 110;
+    const logoW = logoH * (logoImage.width / logoImage.height);
+    ctx.drawImage(logoImage, CARD_W / 2 - logoW / 2, 1218, logoW, logoH);
+  } else {
+    ctx.font = `900 72px ${display}`;
+    const track = 2;
+    const word = "spindex";
+    let cursor = CARD_W / 2 - measureTracked(ctx, word, track) / 2;
+    const prevAlign = ctx.textAlign;
+    ctx.textAlign = "left";
+    for (const ch of word) {
+      ctx.fillStyle = ch === "p" ? THEME.accent : THEME.ink;
+      ctx.shadowColor = ch === "p" ? THEME.accent : "transparent";
+      ctx.shadowBlur = ch === "p" ? 16 : 0;
+      ctx.fillText(ch, cursor, 1278);
+      cursor += ctx.measureText(ch).width + track;
+    }
+    ctx.shadowBlur = 0;
+    ctx.textAlign = prevAlign;
+  }
+
+  ctx.font = `400 27px ${body}`;
+  ctx.fillStyle = THEME.inkDim;
+  ctx.fillText(url, CARD_W / 2, 1322);
+}
+
+/* ---------- main renderer ---------- */
+
+export function renderShareCard(
+  canvas: HTMLCanvasElement,
+  data: ShareCardData,
+  seed: number,
+): void {
+  canvas.width = CARD_W;
+  canvas.height = CARD_H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const { display, body } = drawCardChrome(ctx, seed);
+  const outcomeColor =
+    data.outcome === "victory"
+      ? THEME.accent
+      : data.outcome === "defeat"
+        ? THEME.atk
+        : THEME.accent2;
 
   /* header — outcome word with neon glow */
   const headerSize = fitFontSize(ctx, data.labels.header, 900, display, 92, 880, 0.16);
@@ -438,39 +481,125 @@ export function renderShareCard(
     drawChipWrap(ctx, roundChips, 880, 1150, 25, display);
   }
 
-  /* watermark footer */
-  ctx.strokeStyle = THEME.edge;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(72, 1196);
-  ctx.lineTo(CARD_W - 72, 1196);
-  ctx.stroke();
+  drawCardFooter(ctx, data.labels.url, display, body);
+}
 
-  if (logoImage) {
-    const logoH = 110;
-    const logoW = logoH * (logoImage.width / logoImage.height);
-    ctx.drawImage(logoImage, CARD_W / 2 - logoW / 2, 1218, logoW, logoH);
-  } else {
-    ctx.font = `900 72px ${display}`;
-    const track = 2;
-    const word = "spindex";
-    let cursor = CARD_W / 2 - measureTracked(ctx, word, track) / 2;
-    const prevAlign = ctx.textAlign;
-    ctx.textAlign = "left";
-    for (const ch of word) {
-      ctx.fillStyle = ch === "p" ? THEME.accent : THEME.ink;
-      ctx.shadowColor = ch === "p" ? THEME.accent : "transparent";
-      ctx.shadowBlur = ch === "p" ? 16 : 0;
-      ctx.fillText(ch, cursor, 1278);
-      cursor += ctx.measureText(ch).width + track;
-    }
-    ctx.shadowBlur = 0;
-    ctx.textAlign = prevAlign;
-  }
+/* ---------- podium card ---------- */
+
+export interface PodiumCardEntry {
+  place: "1st" | "2nd" | "3rd-4th";
+  name: string;
+  playerCode: string;
+}
+
+export interface PodiumCardData {
+  tournamentName: string;
+  dateLabel: string;
+  entries: PodiumCardEntry[];
+  url: string;
+}
+
+export function podiumSampleText(d: PodiumCardData): string {
+  return [
+    "PODIUM",
+    d.tournamentName,
+    d.dateLabel,
+    d.url,
+    ...d.entries.flatMap((e) => [e.place, e.name, e.playerCode]),
+  ].join(" ");
+}
+
+function drawPodiumPlace(
+  ctx: CanvasRenderingContext2D,
+  entry: PodiumCardEntry,
+  medal: string,
+  y: number,
+  medalSize: number,
+  labelColor: string,
+  nameSize: number,
+  display: string,
+  body: string,
+) {
+  ctx.font = `${medalSize}px sans-serif`;
+  ctx.fillText(medal, CARD_W / 2, y);
+
+  ctx.font = `700 26px ${display}`;
+  ctx.fillStyle = labelColor;
+  drawTracked(ctx, entry.place.toUpperCase() + " PLACE", CARD_W / 2, y + 44, 5);
+
+  const fitSize = fitFontSize(ctx, entry.name, 900, display, nameSize, 900);
+  ctx.font = `900 ${fitSize}px ${display}`;
+  ctx.fillStyle = THEME.ink;
+  ctx.fillText(entry.name, CARD_W / 2, y + 44 + fitSize * 0.86);
+
+  ctx.font = `400 26px ${body}`;
+  ctx.fillStyle = THEME.inkDim;
+  ctx.fillText(entry.playerCode, CARD_W / 2, y + 44 + fitSize * 0.86 + 38);
+}
+
+export function renderPodiumCard(
+  canvas: HTMLCanvasElement,
+  data: PodiumCardData,
+  seed: number,
+): void {
+  canvas.width = CARD_W;
+  canvas.height = CARD_H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const { display, body } = drawCardChrome(ctx, seed);
+
+  /* header */
+  const headerSize = fitFontSize(ctx, "PODIUM", 900, display, 92, 880, 0.16);
+  ctx.font = `900 ${headerSize}px ${display}`;
+  ctx.fillStyle = THEME.accent;
+  ctx.shadowColor = THEME.accent;
+  ctx.shadowBlur = 44;
+  drawTracked(ctx, "PODIUM", CARD_W / 2, 172, headerSize * 0.16);
+  drawTracked(ctx, "PODIUM", CARD_W / 2, 172, headerSize * 0.16);
+  ctx.shadowBlur = 0;
+
+  const nameSize = fitFontSize(ctx, data.tournamentName, 700, display, 40, 880);
+  ctx.font = `700 ${nameSize}px ${display}`;
+  ctx.fillStyle = THEME.ink;
+  ctx.fillText(data.tournamentName, CARD_W / 2, 224);
 
   ctx.font = `400 27px ${body}`;
   ctx.fillStyle = THEME.inkDim;
-  ctx.fillText(data.labels.url, CARD_W / 2, 1322);
+  ctx.fillText(data.dateLabel, CARD_W / 2, 264);
+
+  const first = data.entries.find((e) => e.place === "1st");
+  const second = data.entries.find((e) => e.place === "2nd");
+  const thirdFourth = data.entries.filter((e) => e.place === "3rd-4th");
+
+  if (first) {
+    drawPodiumPlace(ctx, first, "🥇", 380, 140, THEME.accent, 90, display, body);
+  }
+  if (second) {
+    drawPodiumPlace(ctx, second, "🥈", 660, 100, THEME.accent2, 66, display, body);
+  }
+  if (thirdFourth.length > 0) {
+    ctx.font = `88px sans-serif`;
+    ctx.fillText("🥉", CARD_W / 2, 900);
+    ctx.font = `700 24px ${display}`;
+    ctx.fillStyle = THEME.bal;
+    drawTracked(ctx, "3RD-4TH PLACE", CARD_W / 2, 940, 5);
+
+    const cols = thirdFourth.length === 2 ? [300, 780] : [CARD_W / 2];
+    thirdFourth.forEach((entry, i) => {
+      const x = cols[i] ?? CARD_W / 2;
+      const size = fitFontSize(ctx, entry.name, 700, display, 46, 400);
+      ctx.font = `700 ${size}px ${display}`;
+      ctx.fillStyle = THEME.ink;
+      ctx.fillText(entry.name, x, 1000);
+
+      ctx.font = `400 24px ${body}`;
+      ctx.fillStyle = THEME.inkDim;
+      ctx.fillText(entry.playerCode, x, 1032);
+    });
+  }
+
+  drawCardFooter(ctx, data.url, display, body);
 }
 
 function drawTrackedFrom(

@@ -370,6 +370,56 @@ export function beyliveKnockoutRoundLabel(matchCountInRound: number) {
   return `Round of ${matchCountInRound * 2}`;
 }
 
+export interface BeylivePodiumEntry {
+  place: "1st" | "2nd" | "3rd-4th";
+  name: string;
+  playerCode: string;
+  profile?: Profile;
+}
+
+/**
+ * 1st/2nd/3rd-4th from the 'main' knockout bracket's Final and Semifinal —
+ * null until the tournament has actually crowned a champion. Semifinal
+ * losers tie for 3rd since there is no separate bronze match.
+ */
+export function beylivePodium(
+  tournament: CommunityTournament | null,
+  matches: BeyliveMatch[],
+): BeylivePodiumEntry[] | null {
+  if (!tournament || tournament.status !== "completed") return null;
+
+  const mainMatches = matches.filter((m) => m.bracket === "main" && m.status === "completed");
+  if (mainMatches.length === 0) return null;
+
+  const roundNos = [...new Set(mainMatches.map((m) => m.round_no))].sort((a, b) => b - a);
+  const finalMatches = mainMatches.filter((m) => m.round_no === roundNos[0]);
+  if (finalMatches.length !== 1) return null;
+
+  const final = finalMatches[0];
+  const winner = final.players?.find((p) => p.user_id === final.winner_id);
+  const runnerUp = final.players?.find((p) => p.user_id !== final.winner_id);
+  if (!winner || !runnerUp) return null;
+
+  const entries: BeylivePodiumEntry[] = [
+    { place: "1st", name: profileDisplayName(winner.profile), playerCode: beylivePlayerCode(winner.profile), profile: winner.profile },
+    { place: "2nd", name: profileDisplayName(runnerUp.profile), playerCode: beylivePlayerCode(runnerUp.profile), profile: runnerUp.profile },
+  ];
+
+  const semiMatches = mainMatches.filter((m) => m.round_no === roundNos[1]);
+  if (semiMatches.length === 2) {
+    const losers = semiMatches
+      .map((m) => m.players?.find((p) => p.user_id !== m.winner_id))
+      .filter((p): p is BeyliveMatchPlayer => !!p);
+    if (losers.length === 2) {
+      for (const p of losers) {
+        entries.push({ place: "3rd-4th", name: profileDisplayName(p.profile), playerCode: beylivePlayerCode(p.profile), profile: p.profile });
+      }
+    }
+  }
+
+  return entries;
+}
+
 export function findBeyliveTeamByScan(teams: BeyliveTeam[], raw: string): BeyliveTeam | null {
   const value = raw
     .trim()

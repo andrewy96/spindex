@@ -24,6 +24,7 @@ import {
   isBeyliveTeamTournament,
   beyliveEventId,
   beylivePlayerCode,
+  beylivePodium,
   beyliveStandings,
   beyliveStatusLabel,
   beyliveStreamEmbedUrl,
@@ -44,6 +45,8 @@ import {
   TeamMatch,
 } from "@/lib/beylivePartner";
 import { profileDisplayName } from "@/lib/profileName";
+import SharePodiumModal from "./SharePodiumModal";
+import { PodiumCardData, shareDateLabel } from "@/lib/shareCard";
 
 function groupByRound(matches: BeyliveMatch[]) {
   const map = new Map<number, BeyliveMatch[]>();
@@ -343,6 +346,8 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
   const rounds = useMemo(() => groupByRound(matches), [matches]);
   const groupStage = isBeyliveGroupStageTournament(tournament);
   const groupPools = useMemo(() => beyliveGroupPools(tournament, matches), [tournament, matches]);
+  const podium = useMemo(() => beylivePodium(tournament, matches), [tournament, matches]);
+  const [showPodiumModal, setShowPodiumModal] = useState(false);
   const streamFeeds = useMemo<StreamFeed[]>(() => {
     if (!tournament) return [];
     const stadiumFeeds = [
@@ -465,6 +470,48 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
 
       <StreamPanel feeds={streamFeeds} hostName={hostName} />
 
+      {podium && podium.length > 0 && (
+        <section className="panel mt-4 border-accent/40 bg-accent/5 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="font-display text-sm font-bold tracking-wider text-accent">🏆 Podium</div>
+            <button
+              onClick={() => setShowPodiumModal(true)}
+              className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110"
+            >
+              Share podium
+            </button>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            {podium.map((entry, index) => (
+              <div key={`${entry.place}-${index}`} className="rounded-md border border-edge bg-panel p-3">
+                <div className="text-[10px] uppercase tracking-wide text-ink-dim">{entry.place}</div>
+                <div className="mt-1 font-display text-sm font-bold text-ink">{entry.name}</div>
+                <div className="font-mono text-xs text-accent-2">{entry.playerCode}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {showPodiumModal && podium && podium.length > 0 && tournament && (
+        <SharePodiumModal
+          fileId={tournament.id}
+          onClose={() => setShowPodiumModal(false)}
+          data={
+            {
+              tournamentName: tournament.name,
+              dateLabel: shareDateLabel(new Date(), locale),
+              url: typeof window !== "undefined" ? window.location.host : "SPINDEX",
+              entries: podium.map((entry) => ({
+                place: entry.place,
+                name: entry.name,
+                playerCode: entry.playerCode,
+              })),
+            } satisfies PodiumCardData
+          }
+        />
+      )}
+
       {groupStage && groupPools.length > 0 && (
         <section className="panel mt-4 p-5">
           <div className="mb-3 font-display text-sm font-bold tracking-wider text-ink-dim">
@@ -485,7 +532,12 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
                       <span className="min-w-0 truncate">
                         {index + 1}. {row.name}
                       </span>
-                      <span className="ml-2 shrink-0 font-mono">{row.wins}-{row.losses}</span>
+                      <span className="ml-2 flex shrink-0 items-baseline gap-1.5 font-mono">
+                        <span>{row.wins}-{row.losses}</span>
+                        <span className="text-[0.7em] text-ink-dim">
+                          {row.diff > 0 ? `+${row.diff}` : row.diff}
+                        </span>
+                      </span>
                     </div>
                   ))}
                 </div>
