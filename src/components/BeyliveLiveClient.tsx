@@ -14,6 +14,7 @@ import {
   beyliveFormatLabel,
   beyliveGroupPools,
   beyliveKnockoutRoundLabel,
+  beyliveKnockoutRoundLabels,
   beyliveParticipantCode,
   beyliveParticipantName,
   beyliveParticipantWon,
@@ -28,6 +29,7 @@ import {
   beyliveStandings,
   beyliveStatusLabel,
   beyliveStreamEmbedUrl,
+  isBeyliveByeMatch,
 } from "@/lib/beylive";
 import {
   isLocalPartnerLive,
@@ -45,6 +47,7 @@ import {
   TeamMatch,
 } from "@/lib/beylivePartner";
 import { profileDisplayName } from "@/lib/profileName";
+import BeyliveBracketView from "./BeyliveBracketView";
 import SharePodiumModal from "./SharePodiumModal";
 import { PodiumCardData, shareDateLabel } from "@/lib/shareCard";
 
@@ -58,7 +61,14 @@ function groupByRound(matches: BeyliveMatch[]) {
   return [...map.entries()].sort((a, b) => a[0] - b[0]);
 }
 
-function roundTitle(roundNo: number, matches: BeyliveMatch[], teamMode: boolean, groupStage: boolean) {
+function roundTitle(
+  roundNo: number,
+  matches: BeyliveMatch[],
+  teamMode: boolean,
+  groupStage: boolean,
+  singleElimination: boolean,
+  mainRoundLabels: Map<number, string>,
+) {
   if (teamMode) {
     const hasChampionship = matches.some((match) => match.bracket === "grand");
     const hasConsolation = matches.some((match) => match.bracket === "losers");
@@ -70,7 +80,22 @@ function roundTitle(roundNo: number, matches: BeyliveMatch[], teamMode: boolean,
   if (groupStage) {
     const hasPools = matches.some((match) => /^pool_\d+$/.test(match.bracket));
     if (hasPools) return `Group stage · Round ${roundNo}`;
-    if (matches.some((match) => match.bracket === "main")) return beyliveKnockoutRoundLabel(matches.length);
+    const mainCount = matches.filter((match) => match.bracket === "main").length;
+    const hasThirdPlace = matches.some((match) => match.bracket === "losers");
+    if (mainCount > 0) {
+      const mainTitle = mainRoundLabels.get(roundNo) ?? beyliveKnockoutRoundLabel(mainCount);
+      return hasThirdPlace ? `${mainTitle} / 3rd Place` : mainTitle;
+    }
+    if (hasThirdPlace) return "3rd Place";
+  }
+  if (singleElimination) {
+    const mainCount = matches.filter((match) => match.bracket === "main").length;
+    const hasThirdPlace = matches.some((match) => match.bracket === "losers");
+    if (mainCount > 0) {
+      const mainTitle = mainRoundLabels.get(roundNo) ?? beyliveKnockoutRoundLabel(mainCount);
+      return hasThirdPlace ? `${mainTitle} / 3rd Place` : mainTitle;
+    }
+    if (hasThirdPlace) return "3rd Place";
   }
   return `Round ${roundNo}`;
 }
@@ -80,9 +105,14 @@ function poolLabel(match: BeyliveMatch) {
   return found ? `Pool ${found[1]}` : null;
 }
 
+function matchPrefix(match: BeyliveMatch) {
+  const pool = poolLabel(match);
+  return match.bracket === "losers" ? "3rd Place" : pool;
+}
+
 function MatchCard({ match }: { match: BeyliveMatch }) {
   const players = [...(match.players ?? [])].sort((a, b) => a.slot_no - b.slot_no);
-  const pool = poolLabel(match);
+  const pool = matchPrefix(match);
   return (
     <div className={`rounded-md border p-3 ${match.status === "live" ? "border-accent bg-accent/10" : "border-edge bg-panel"}`}>
       <div className="mb-2 flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-ink-dim">
@@ -344,6 +374,18 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
 
   const dbStandings = useMemo(() => beyliveStandings(tournament, matches), [matches, tournament]);
   const rounds = useMemo(() => groupByRound(matches), [matches]);
+  const mainRoundLabels = useMemo(() => beyliveKnockoutRoundLabels(matches), [matches]);
+  const visibleRounds = useMemo(
+    () =>
+      rounds
+        .map(([roundNo, roundMatches]) => [
+          roundNo,
+          roundMatches.filter((match) => !isBeyliveByeMatch(match)),
+          roundMatches,
+        ] as const)
+        .filter(([, visibleMatches]) => visibleMatches.length > 0),
+    [rounds],
+  );
   const groupStage = isBeyliveGroupStageTournament(tournament);
   const groupPools = useMemo(() => beyliveGroupPools(tournament, matches), [tournament, matches]);
   const podium = useMemo(() => beylivePodium(tournament, matches), [tournament, matches]);
@@ -387,6 +429,8 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
   const localChampion = localChampionId ? localTeams.find((team) => team.id === localChampionId) : null;
   const localConsolation = localConsolationId ? localTeams.find((team) => team.id === localConsolationId) : null;
   const teamMode = isBeyliveTeamTournament(tournament) && ((tournament?.teams?.length ?? 0) > 0 || localPartnerReady);
+  const showBracketOverview =
+    !teamMode && (tournament?.format === "single_elimination" || tournament?.format === "group_stage");
   const teams = useMemo(
     () =>
       [...(tournament?.teams ?? [])].sort(
@@ -547,6 +591,16 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
         </section>
       )}
 
+      {showBracketOverview && (
+        <BeyliveBracketView
+          matches={matches}
+          locale={locale}
+          tournamentId={id}
+          currentRound={tournament.current_round ?? undefined}
+          className="mt-4"
+        />
+      )}
+
       <div className="mt-4 grid gap-4 lg:grid-cols-[1.45fr_0.85fr]">
         <div className="grid gap-4">
           {localPartnerReady ? (
@@ -567,16 +621,16 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
                 </div>
               </section>
             ))
-          ) : rounds.length === 0 ? (
+          ) : visibleRounds.length === 0 ? (
             <div className="panel p-8 text-center text-sm text-ink-dim">BEYLIVE has not started yet.</div>
           ) : (
-            rounds.map(([roundNo, roundMatches]) => (
+            visibleRounds.map(([roundNo, visibleMatches, roundMatches]) => (
               <section key={roundNo} className="panel p-5">
                 <div className="mb-3 font-display text-sm font-bold tracking-wider text-ink-dim">
-                  {roundTitle(roundNo, roundMatches, teamMode, groupStage)}
+                  {roundTitle(roundNo, roundMatches, teamMode, groupStage, tournament?.format === "single_elimination", mainRoundLabels)}
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {roundMatches.map((match) => (
+                  {visibleMatches.map((match) => (
                     <MatchCard key={match.id} match={match} />
                   ))}
                 </div>

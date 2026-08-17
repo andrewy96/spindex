@@ -172,6 +172,11 @@ export function beyliveStatusLabel(status: CommunityTournament["status"] | Beyli
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
+export function isBeyliveByeMatch(match: Pick<BeyliveMatch, "players" | "status">) {
+  const playerCount = match.players?.length ?? 0;
+  return match.status === "bye" || (playerCount > 0 && playerCount < 2);
+}
+
 export function beyliveStandings(
   tournament: CommunityTournament | null,
   matches: BeyliveMatch[],
@@ -370,8 +375,29 @@ export function beyliveKnockoutRoundLabel(matchCountInRound: number) {
   return `Round of ${matchCountInRound * 2}`;
 }
 
+export function beyliveKnockoutRoundLabels(matches: BeyliveMatch[]) {
+  const mainRounds = [
+    ...new Set(
+      matches
+        .filter((match) => match.bracket === "main")
+        .map((match) => match.round_no),
+    ),
+  ].sort((a, b) => a - b);
+  const labels = new Map<number, string>();
+
+  mainRounds.forEach((roundNo, index) => {
+    const roundsToChampion = mainRounds.length - index;
+    if (roundsToChampion <= 1) labels.set(roundNo, "Final");
+    else if (roundsToChampion === 2) labels.set(roundNo, "Semifinal");
+    else if (roundsToChampion === 3) labels.set(roundNo, "Quarterfinal");
+    else labels.set(roundNo, `Round of ${2 ** roundsToChampion}`);
+  });
+
+  return labels;
+}
+
 export interface BeylivePodiumEntry {
-  place: "1st" | "2nd" | "3rd-4th";
+  place: "1st" | "2nd" | "3rd" | "4th" | "3rd-4th";
   name: string;
   playerCode: string;
   profile?: Profile;
@@ -404,6 +430,24 @@ export function beylivePodium(
     { place: "1st", name: profileDisplayName(winner.profile), playerCode: beylivePlayerCode(winner.profile), profile: winner.profile },
     { place: "2nd", name: profileDisplayName(runnerUp.profile), playerCode: beylivePlayerCode(runnerUp.profile), profile: runnerUp.profile },
   ];
+
+  const thirdPlaceMatch = matches.find(
+    (m) =>
+      m.bracket === "losers" &&
+      m.round_no === final.round_no &&
+      m.status === "completed" &&
+      m.players?.length === 2 &&
+      m.winner_id,
+  );
+  if (thirdPlaceMatch) {
+    const third = thirdPlaceMatch.players?.find((p) => p.user_id === thirdPlaceMatch.winner_id);
+    const fourth = thirdPlaceMatch.players?.find((p) => p.user_id !== thirdPlaceMatch.winner_id);
+    if (third && fourth) {
+      entries.push({ place: "3rd", name: profileDisplayName(third.profile), playerCode: beylivePlayerCode(third.profile), profile: third.profile });
+      entries.push({ place: "4th", name: profileDisplayName(fourth.profile), playerCode: beylivePlayerCode(fourth.profile), profile: fourth.profile });
+      return entries;
+    }
+  }
 
   const semiMatches = mainMatches.filter((m) => m.round_no === roundNos[1]);
   if (semiMatches.length === 2) {

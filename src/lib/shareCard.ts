@@ -487,7 +487,7 @@ export function renderShareCard(
 /* ---------- podium card ---------- */
 
 export interface PodiumCardEntry {
-  place: "1st" | "2nd" | "3rd-4th";
+  place: "1st" | "2nd" | "3rd" | "4th" | "3rd-4th";
   name: string;
   playerCode: string;
 }
@@ -570,7 +570,11 @@ export function renderPodiumCard(
 
   const first = data.entries.find((e) => e.place === "1st");
   const second = data.entries.find((e) => e.place === "2nd");
-  const thirdFourth = data.entries.filter((e) => e.place === "3rd-4th");
+  const resolvedThird = data.entries.find((e) => e.place === "3rd");
+  const resolvedFourth = data.entries.find((e) => e.place === "4th");
+  const thirdFourth = resolvedThird || resolvedFourth
+    ? [resolvedThird, resolvedFourth].filter((entry): entry is PodiumCardEntry => Boolean(entry))
+    : data.entries.filter((e) => e.place === "3rd-4th");
 
   if (first) {
     drawPodiumPlace(ctx, first, "🥇", 380, 140, THEME.accent, 90, display, body);
@@ -583,19 +587,25 @@ export function renderPodiumCard(
     ctx.fillText("🥉", CARD_W / 2, 900);
     ctx.font = `700 24px ${display}`;
     ctx.fillStyle = THEME.bal;
-    drawTracked(ctx, "3RD-4TH PLACE", CARD_W / 2, 940, 5);
+    const sharedLabel = thirdFourth.some((entry) => entry.place === "3rd-4th");
+    drawTracked(ctx, sharedLabel ? "3RD-4TH PLACE" : "PLACINGS", CARD_W / 2, 940, 5);
 
     const cols = thirdFourth.length === 2 ? [300, 780] : [CARD_W / 2];
     thirdFourth.forEach((entry, i) => {
       const x = cols[i] ?? CARD_W / 2;
+      if (entry.place !== "3rd-4th") {
+        ctx.font = `700 20px ${display}`;
+        ctx.fillStyle = THEME.bal;
+        drawTracked(ctx, `${entry.place.toUpperCase()} PLACE`, x, 980, 3);
+      }
       const size = fitFontSize(ctx, entry.name, 700, display, 46, 400);
       ctx.font = `700 ${size}px ${display}`;
       ctx.fillStyle = THEME.ink;
-      ctx.fillText(entry.name, x, 1000);
+      ctx.fillText(entry.name, x, entry.place === "3rd-4th" ? 1000 : 1020);
 
       ctx.font = `400 24px ${body}`;
       ctx.fillStyle = THEME.inkDim;
-      ctx.fillText(entry.playerCode, x, 1032);
+      ctx.fillText(entry.playerCode, x, entry.place === "3rd-4th" ? 1032 : 1052);
     });
   }
 
