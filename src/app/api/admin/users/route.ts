@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     .from("profiles")
     .select(PROFILE_SELECT)
     .order("created_at", { ascending: false })
-    .limit(30);
+    .limit(1000);
 
   if (scope === "registered") {
     query = query.eq("is_walkin", false);
@@ -50,7 +50,9 @@ export async function GET(request: Request) {
 
   if (rawQuery) {
     if (!handleQuery) return NextResponse.json({ users: [] });
-    query = query.ilike("handle", `%${handleQuery}%`);
+    query = query.or(
+      `handle.ilike.%${handleQuery}%,display_name.ilike.%${handleQuery}%`
+    );
   }
 
   const { data, error } = await query;
