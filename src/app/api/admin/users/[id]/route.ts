@@ -6,7 +6,7 @@ import { normalizeMyPhone } from "@/lib/phone";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PROFILE_SELECT =
-  "id,handle,display_name,avatar_url,city,stars,wins,losses,created_at";
+  "id,handle,display_name,avatar_url,city,stars,wins,losses,is_walkin,created_at";
 const HANDLE_RE = /^[a-zA-Z0-9_]{3,20}$/;
 const BIRTHDAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -87,6 +87,18 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   if (!isRecord(body)) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+
+  const { data: existingProfile, error: existingError } = await auth.admin
+    .from("profiles")
+    .select("is_walkin")
+    .eq("id", targetId)
+    .single();
+  if (existingError) {
+    return NextResponse.json({ error: "profile_not_found" }, { status: 404 });
+  }
+  if (existingProfile.is_walkin && ("phone" in body || "password" in body)) {
+    return NextResponse.json({ error: "walkin_has_no_account" }, { status: 400 });
   }
 
   const updates: Record<string, string | number | null> = {};

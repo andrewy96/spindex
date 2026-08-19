@@ -255,7 +255,19 @@
     "resetWaiting": "已发放，尚未使用",
     "resetDismissed": "申请已忽略。",
     "deleteChallenge": "????",
-    "deleteChallengeConfirm": "???????????????????"
+    "deleteChallengeConfirm": "???????????????????",
+    "deleteWalkin": "Remove walk-in",
+    "deleteWalkinConfirm": "Remove walk-in {handle}? This deletes the temporary tournament entry if history allows it.",
+    "scopeRegistered": "Registered users",
+    "scopeWalkins": "Walk-ins",
+    "scopeAll": "All",
+    "registeredBadge": "REGISTERED",
+    "walkinBadge": "WALK-IN",
+    "temporaryId": "Temporary ID",
+    "walkinSince": "Added",
+    "tournamentOnly": "Tournament only",
+    "pointBalance": "Point balance",
+    "applyPoints": "Apply points"
   },
   "home": {
     "heroKicker": "极限齿轮竞技",

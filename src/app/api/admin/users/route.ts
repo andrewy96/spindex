@@ -3,7 +3,7 @@ import { requireSuperadmin } from "@/lib/adminServer";
 
 const HANDLE_SEARCH_RE = /[^a-zA-Z0-9_]/g;
 const PROFILE_SELECT =
-  "id,handle,display_name,avatar_url,city,stars,wins,losses,created_at";
+  "id,handle,display_name,avatar_url,city,stars,wins,losses,is_walkin,created_at";
 
 interface ProfileRow {
   id: string;
@@ -14,6 +14,7 @@ interface ProfileRow {
   stars: number;
   wins: number;
   losses: number;
+  is_walkin: boolean;
   created_at: string;
 }
 
@@ -31,12 +32,21 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const rawQuery = (url.searchParams.get("q") ?? "").trim();
   const handleQuery = rawQuery.replace(/^@/, "").replace(HANDLE_SEARCH_RE, "");
+  const scopeParam = url.searchParams.get("scope");
+  const scope =
+    scopeParam === "walkins" || scopeParam === "all" ? scopeParam : "registered";
 
   let query = auth.admin
     .from("profiles")
     .select(PROFILE_SELECT)
     .order("created_at", { ascending: false })
     .limit(30);
+
+  if (scope === "registered") {
+    query = query.eq("is_walkin", false);
+  } else if (scope === "walkins") {
+    query = query.eq("is_walkin", true);
+  }
 
   if (rawQuery) {
     if (!handleQuery) return NextResponse.json({ users: [] });

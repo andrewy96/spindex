@@ -33,6 +33,7 @@ export default function PlayerRankingsClient({
     let q = supabase
       .from("profiles")
       .select("*")
+      .eq("is_walkin", false)
       .order("wins", { ascending: false })
       .order("stars", { ascending: false })
       .limit(limit);

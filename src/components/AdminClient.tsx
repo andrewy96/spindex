@@ -21,8 +21,11 @@ interface AdminUser {
   stars: number;
   wins: number;
   losses: number;
+  is_walkin: boolean;
   created_at: string;
 }
+
+type AdminUserScope = "registered" | "walkins" | "all";
 
 interface ProfileForm {
   handle: string;
@@ -45,13 +48,14 @@ function fmtDate(iso: string, locale: Locale) {
 export default function AdminClient({ locale, dict }: { locale: Locale; dict: Dict }) {
   const { enabled, loading, session, profile, refreshProfile } = useAuth();
   const [query, setQuery] = useState("");
+  const [scope, setScope] = useState<AdminUserScope>("registered");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "forbidden" | "error">(
     "idle"
   );
   const [message, setMessage] = useState<string | null>(null);
-  const [customDeltas, setCustomDeltas] = useState<Record<string, string>>({});
+  const [pointEdits, setPointEdits] = useState<Record<string, string>>({});
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [profileForms, setProfileForms] = useState<Record<string, ProfileForm>>({});
   const [passwords, setPasswords] = useState<Record<string, string>>({});
@@ -63,14 +67,16 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
   }, [session]);
 
   const loadUsers = useCallback(
-    async (q: string) => {
+    async (q: string, selectedScope: AdminUserScope) => {
       const headers = authHeaders();
       if (!headers) return;
       setStatus("loading");
       setMessage(null);
-      const res = await fetch(`/api/admin/users?q=${encodeURIComponent(q.trim())}`, {
-        headers,
+      const params = new URLSearchParams({
+        q: q.trim(),
+        scope: selectedScope,
       });
+      const res = await fetch(`/api/admin/users?${params.toString()}`, { headers });
       if (res.status === 403) {
         setStatus("forbidden");
         return;
@@ -82,6 +88,9 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
       }
       const data = (await res.json()) as { users: AdminUser[] };
       setUsers(data.users);
+      setPointEdits(
+        Object.fromEntries(data.users.map((user) => [user.id, String(user.stars)]))
+      );
       setProfileForms(
         Object.fromEntries(
           data.users.map((user) => [
@@ -114,10 +123,13 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
 
   useEffect(() => {
     if (session) {
-      loadUsers("");
-      loadResets();
+      loadUsers("", "registered");
     }
-  }, [loadResets, loadUsers, session]);
+  }, [loadUsers, session]);
+
+  useEffect(() => {
+    if (session) loadResets();
+  }, [loadResets, session]);
 
   const handleReset = async (id: string, action: "issue" | "dismiss") => {
     const headers = authHeaders();
@@ -145,7 +157,7 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
 
   const search = (e: FormEvent) => {
     e.preventDefault();
-    loadUsers(query);
+    loadUsers(query, scope);
   };
 
   const adjustPoints = async (user: AdminUser, delta: number) => {
@@ -158,6 +170,7 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
       headers: { ...headers, "Content-Type": "application/json" },
       body: JSON.stringify({
         targetId: user.id,
+        mode: "adjust",
         delta,
         reason: reasons[user.id] ?? "",
       }),
@@ -168,13 +181,38 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
       return;
     }
     const data = (await res.json()) as { user: AdminUser };
-    setUsers((current) => current.map((u) => (u.id === data.user.id ? data.user : u)));
+    syncUser(data.user);
     setMessage(dict.admin.updated);
-    if (profile?.id === data.user.id) refreshProfile();
+  };
+
+  const setPoints = async (user: AdminUser, points: number) => {
+    const headers = authHeaders();
+    if (!headers) return;
+    setBusy(`${user.id}:stars`);
+    setMessage(null);
+    const res = await fetch("/api/admin/stars", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        targetId: user.id,
+        mode: "set",
+        points,
+        reason: reasons[user.id] ?? "",
+      }),
+    });
+    setBusy(null);
+    if (!res.ok) {
+      setMessage(dict.admin.error);
+      return;
+    }
+    const data = (await res.json()) as { user: AdminUser };
+    syncUser(data.user);
+    setMessage(dict.admin.updated);
   };
 
   const syncUser = (user: AdminUser) => {
     setUsers((current) => current.map((u) => (u.id === user.id ? user : u)));
+    setPointEdits((current) => ({ ...current, [user.id]: String(user.stars) }));
     setProfileForms((current) => ({
       ...current,
       [user.id]: {
@@ -217,7 +255,7 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
       headers: { ...headers, "Content-Type": "application/json" },
       body: JSON.stringify({
         handle: form.handle,
-        phone: form.phone,
+        ...(user.is_walkin ? {} : { phone: form.phone }),
         displayName: form.displayName,
         city: form.city || null,
         avatarUrl: form.avatarUrl.trim() || null,
@@ -269,7 +307,10 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
       return;
     }
     const ok = window.confirm(
-      dict.admin.deleteConfirm.replace("{handle}", `@${user.handle}`)
+      (user.is_walkin ? dict.admin.deleteWalkinConfirm : dict.admin.deleteConfirm).replace(
+        "{handle}",
+        user.is_walkin ? user.display_name || `@${user.handle}` : `@${user.handle}`
+      )
     );
     if (!ok) return;
     setBusy(`${user.id}:delete`);
@@ -370,20 +411,47 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
         )}
       </section>
 
-      <form onSubmit={search} className="panel flex flex-col gap-3 p-4 sm:flex-row">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={dict.admin.searchPlaceholder}
-          className="min-w-0 flex-1 rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/60 focus:border-accent"
-        />
-        <button
-          type="submit"
-          disabled={status === "loading"}
-          className="clip-x bg-accent px-5 py-2.5 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
-        >
-          {dict.admin.search}
-        </button>
+      <form onSubmit={search} className="panel flex flex-col gap-3 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={dict.admin.searchPlaceholder}
+            className="min-w-0 flex-1 rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/60 focus:border-accent"
+          />
+          <button
+            type="submit"
+            disabled={status === "loading"}
+            className="clip-x bg-accent px-5 py-2.5 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+          >
+            {dict.admin.search}
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              ["registered", dict.admin.scopeRegistered],
+              ["walkins", dict.admin.scopeWalkins],
+              ["all", dict.admin.scopeAll],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => {
+                setScope(key);
+                loadUsers(query, key);
+              }}
+              className={`rounded-md border px-3 py-1.5 font-display text-[11px] font-bold tracking-wider transition ${
+                scope === key
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-edge bg-panel text-ink-dim hover:border-accent/60 hover:text-ink"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </form>
 
       {message && (
@@ -412,7 +480,14 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
       ) : (
         <div className="space-y-3">
           {users.map((user) => {
-            const delta = Number(customDeltas[user.id] ?? "1");
+            const pointEdit = pointEdits[user.id] ?? String(user.stars);
+            const desiredPoints = Number(pointEdit);
+            const pointsValid =
+              pointEdit.trim() !== "" &&
+              Number.isInteger(desiredPoints) &&
+              desiredPoints >= 0 &&
+              desiredPoints <= 2147483647;
+            const pointsChanged = pointsValid && desiredPoints !== user.stars;
             const form = profileForms[user.id] ?? {
               handle: user.handle,
               phone: user.phone || "",
@@ -423,10 +498,21 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
               birthday: user.birthday ?? "",
             };
             const rowBusy = !!busy?.startsWith(`${user.id}:`);
+            const userMeta = [
+              user.display_name || user.handle,
+              user.city,
+              !user.is_walkin ? user.phone : null,
+            ].filter(Boolean);
             return (
               <div key={user.id} className="panel p-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-                  <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-accent/30 bg-panel font-display text-lg font-black text-accent">
+                  <div
+                    className={`flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-panel font-display text-lg font-black ${
+                      user.is_walkin
+                        ? "border-bal/40 text-bal"
+                        : "border-accent/30 text-accent"
+                    }`}
+                  >
                     {user.avatar_url ? (
                       <img
                         src={user.avatar_url}
@@ -439,18 +525,38 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
                         referrerPolicy="no-referrer"
                       />
                     ) : (
-                      user.handle.slice(0, 1).toUpperCase()
+                      user.is_walkin ? "W" : user.handle.slice(0, 1).toUpperCase()
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        href={`/${locale}/players/${user.handle}`}
-                        className="font-semibold hover:text-accent"
+                      {user.is_walkin ? (
+                        <span className="font-semibold text-ink">
+                          {user.display_name || user.handle}
+                        </span>
+                      ) : (
+                        <Link
+                          href={`/${locale}/players/${user.handle}`}
+                          className="font-semibold hover:text-accent"
+                        >
+                          @{user.handle}
+                        </Link>
+                      )}
+                      <span
+                        className={`rounded px-2 py-0.5 font-display text-[10px] font-bold tracking-wider ${
+                          user.is_walkin
+                            ? "bg-bal/10 text-bal"
+                            : "bg-accent/10 text-accent"
+                        }`}
                       >
-                        @{user.handle}
-                      </Link>
+                        {user.is_walkin ? dict.admin.walkinBadge : dict.admin.registeredBadge}
+                      </span>
                       <span className="text-xs text-ink-dim">
+                        {user.is_walkin
+                          ? `${dict.admin.temporaryId} @${user.handle}`
+                          : userMeta.join(" / ")}
+                      </span>
+                      <span className="hidden text-xs text-ink-dim">
                         {user.display_name || user.handle}
                         {user.city ? ` · ${user.city}` : ""}
                         {user.phone ? ` · ${user.phone}` : ""}
@@ -463,62 +569,78 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
                     </div>
                   </div>
 
-                  <div className="w-24 shrink-0 font-display text-2xl font-bold text-bal">
-                    {user.stars} pts
-                  </div>
+                  {user.is_walkin ? (
+                    <div className="shrink-0 rounded-md border border-bal/30 bg-bal/10 px-3 py-2 text-xs font-semibold text-bal">
+                      {dict.admin.tournamentOnly}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="w-28 shrink-0 font-display text-2xl font-bold text-bal">
+                        {user.stars.toLocaleString("en-MY")} pts
+                      </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    {[1, 5, -1].map((quick) => (
-                      <button
-                        key={quick}
-                        onClick={() => adjustPoints(user, quick)}
-                        disabled={rowBusy}
-                        className="h-9 rounded-md border border-edge bg-panel-2 px-3 font-display text-xs font-bold text-ink transition enabled:hover:border-accent enabled:hover:text-accent disabled:opacity-50"
-                      >
-                        {quick > 0 ? `+${quick}` : quick}
-                      </button>
-                    ))}
-                  </div>
+                      <div className="flex flex-wrap gap-2">
+                        {[100, 500, -100].map((quick) => (
+                          <button
+                            key={quick}
+                            onClick={() => adjustPoints(user, quick)}
+                            disabled={rowBusy}
+                            className="h-9 rounded-md border border-edge bg-panel-2 px-3 font-display text-xs font-bold text-ink transition enabled:hover:border-accent enabled:hover:text-accent disabled:opacity-50"
+                          >
+                            {quick > 0 ? `+${quick}` : quick}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
 
-                <div className="mt-3 grid gap-2 sm:grid-cols-[8rem_1fr_auto]">
-                  <input
-                    type="number"
-                    min={-1000}
-                    max={1000}
-                    value={customDeltas[user.id] ?? "1"}
-                    onChange={(e) =>
-                      setCustomDeltas((current) => ({
-                        ...current,
-                        [user.id]: e.target.value,
-                      }))
-                    }
-                    aria-label={dict.admin.customDelta}
-                    className="rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition focus:border-accent"
-                  />
-                  <input
-                    value={reasons[user.id] ?? ""}
-                    onChange={(e) =>
-                      setReasons((current) => ({ ...current, [user.id]: e.target.value }))
-                    }
-                    maxLength={240}
-                    placeholder={dict.admin.reasonPlaceholder}
-                    className="rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/60 focus:border-accent"
-                  />
-                  <button
-                    onClick={() => Number.isInteger(delta) && delta !== 0 && adjustPoints(user, delta)}
-                    disabled={rowBusy || !Number.isInteger(delta) || delta === 0}
-                    className="clip-x bg-accent-2 px-5 py-2.5 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
-                  >
-                    {dict.admin.apply}
-                  </button>
-                </div>
+                {!user.is_walkin && (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[11rem_1fr_auto]">
+                    <input
+                      type="number"
+                      min={0}
+                      max={2147483647}
+                      value={pointEdit}
+                      onChange={(e) =>
+                        setPointEdits((current) => ({
+                          ...current,
+                          [user.id]: e.target.value,
+                        }))
+                      }
+                      aria-label={dict.admin.pointBalance}
+                      className="rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition focus:border-accent"
+                    />
+                    <input
+                      value={reasons[user.id] ?? ""}
+                      onChange={(e) =>
+                        setReasons((current) => ({ ...current, [user.id]: e.target.value }))
+                      }
+                      maxLength={240}
+                      placeholder={dict.admin.reasonPlaceholder}
+                      className="rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/60 focus:border-accent"
+                    />
+                    <button
+                      onClick={() => pointsValid && setPoints(user, desiredPoints)}
+                      disabled={rowBusy || !pointsChanged}
+                      className="clip-x bg-accent-2 px-5 py-2.5 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+                    >
+                      {dict.admin.applyPoints}
+                    </button>
+                  </div>
+                )}
 
                 <div className="mt-4 border-t border-edge pt-4">
                   <div className="mb-2 font-display text-xs font-bold tracking-wider text-accent-2">
                     {dict.admin.profileControls}
                   </div>
-                  <div className="grid gap-2 lg:grid-cols-[10rem_12rem_1fr_12rem]">
+                  <div
+                    className={`grid gap-2 ${
+                      user.is_walkin
+                        ? "lg:grid-cols-[10rem_1fr_12rem]"
+                        : "lg:grid-cols-[10rem_12rem_1fr_12rem]"
+                    }`}
+                  >
                     <input
                       value={form.handle}
                       onChange={(e) => updateProfileForm(user.id, "handle", e.target.value)}
@@ -527,13 +649,15 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
                       aria-label={dict.auth.handle}
                       className="rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/60 focus:border-accent"
                     />
-                    <input
-                      value={form.phone}
-                      onChange={(e) => updateProfileForm(user.id, "phone", e.target.value)}
-                      placeholder={dict.auth.phonePlaceholder}
-                      aria-label={dict.auth.phone}
-                      className="rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/60 focus:border-accent"
-                    />
+                    {!user.is_walkin && (
+                      <input
+                        value={form.phone}
+                        onChange={(e) => updateProfileForm(user.id, "phone", e.target.value)}
+                        placeholder={dict.auth.phonePlaceholder}
+                        aria-label={dict.auth.phone}
+                        className="rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/60 focus:border-accent"
+                      />
+                    )}
                     <input
                       value={form.displayName}
                       onChange={(e) =>
@@ -602,34 +726,36 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
                       disabled={rowBusy || profile?.id === user.id}
                       className="clip-x border border-atk/50 bg-atk/10 px-5 py-2.5 font-display text-xs font-bold tracking-wider text-atk transition enabled:hover:bg-atk enabled:hover:text-bg disabled:opacity-50"
                     >
-                      {dict.admin.deleteUser}
+                      {user.is_walkin ? dict.admin.deleteWalkin : dict.admin.deleteUser}
                     </button>
                   </div>
 
-                  <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
-                    <input
-                      type="password"
-                      value={passwords[user.id] ?? ""}
-                      onChange={(e) =>
-                        setPasswords((current) => ({
-                          ...current,
-                          [user.id]: e.target.value,
-                        }))
-                      }
-                      minLength={8}
-                      placeholder={dict.admin.newPassword}
-                      aria-label={dict.admin.newPassword}
-                      autoComplete="new-password"
-                      className="rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/60 focus:border-accent"
-                    />
-                    <button
-                      onClick={() => resetUserPassword(user)}
-                      disabled={rowBusy}
-                      className="clip-x border border-edge bg-panel px-5 py-2.5 font-display text-xs font-bold tracking-wider text-ink-dim transition enabled:hover:text-accent disabled:opacity-50"
-                    >
-                      {dict.admin.resetPassword}
-                    </button>
-                  </div>
+                  {!user.is_walkin && (
+                    <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
+                      <input
+                        type="password"
+                        value={passwords[user.id] ?? ""}
+                        onChange={(e) =>
+                          setPasswords((current) => ({
+                            ...current,
+                            [user.id]: e.target.value,
+                          }))
+                        }
+                        minLength={8}
+                        placeholder={dict.admin.newPassword}
+                        aria-label={dict.admin.newPassword}
+                        autoComplete="new-password"
+                        className="rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/60 focus:border-accent"
+                      />
+                      <button
+                        onClick={() => resetUserPassword(user)}
+                        disabled={rowBusy}
+                        className="clip-x border border-edge bg-panel px-5 py-2.5 font-display text-xs font-bold tracking-wider text-ink-dim transition enabled:hover:text-accent disabled:opacity-50"
+                      >
+                        {dict.admin.resetPassword}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             );
