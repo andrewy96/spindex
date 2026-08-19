@@ -9,14 +9,19 @@ export function generateStaticParams() {
   return locales.map((locale) => ({ locale }));
 }
 
+const BEYBLADE_PARTS_VIDEO_ID = "5f-XW_X095Y";
+
 const copy = {
   en: {
     kicker: "SPINDEX MALAYSIA",
-    title: "Beyblade X command hub",
+    title: "Your Beyblade X command center",
     subtitle:
-      "Built for Malaysian bladers who want one clean place for combos, rankings, live events, community battles, and reward tracking.",
+      "Build stronger combos, score real battles, follow live tournaments, and keep every SPINDEX player record connected in one professional hub.",
     primaryCta: "Build a combo",
     secondaryCta: "Watch BEYLIVE",
+    heroBadge1: "Combo database",
+    heroBadge2: "Live brackets",
+    heroBadge3: "Point battles",
     bioTitle: "What SPINDEX is",
     bio:
       "SPINDEX connects the daily Beyblade X scene: study parts, plan tournament-ready combos, run events, record OverDrive results, and keep every player moving with clear public records.",
@@ -36,6 +41,37 @@ const copy = {
       "A community project for Beyblade X players, collectors, hosts, and judges. The goal is simple: make local play easier to organize, easier to follow, and easier to grow.",
     viewAll: "View all parts",
     open: "Open",
+    videoTitle: "Beyblade X part system",
+    videoSub: "A quick visual reference for how Beyblade X separates into performance parts.",
+    videoNote: "Use this as the visual entry point before exploring the Combo Lab.",
+    startTitle: "Start here",
+    startSub: "Pick the path that matches what you are doing today.",
+    guide: [
+      {
+        href: "/catalog?tab=builder",
+        step: "01",
+        label: "Build first",
+        text: "Open Combo Lab and assemble a tournament-ready setup from the indexed parts.",
+      },
+      {
+        href: "/battle",
+        step: "02",
+        label: "Battle next",
+        text: "Post or accept an OverDrive point challenge and score the match.",
+      },
+      {
+        href: "/beylive",
+        step: "03",
+        label: "Follow live",
+        text: "Watch live brackets, table matches, streams, and completed event history.",
+      },
+      {
+        href: "/tournaments",
+        step: "04",
+        label: "Run events",
+        text: "Host, join, customize formats, and control BEYLIVE tournament flow.",
+      },
+    ],
     cards: [
       {
         href: "/catalog?tab=builder",
@@ -82,10 +118,13 @@ const copy = {
   },
   zh: {
     kicker: "SPINDEX MALAYSIA",
-    title: "Beyblade X 指挥中心",
-    subtitle: "为马来西亚玩家打造的整合平台：组合、排名、直播赛事、社群对战与奖励记录都在同一处。",
+    title: "你的 Beyblade X 指挥中心",
+    subtitle: "建立更强组合、记录真实对战、追踪直播赛事，并把每位 SPINDEX 玩家记录串联在同一个专业平台。",
     primaryCta: "建立组合",
     secondaryCta: "观看 BEYLIVE",
+    heroBadge1: "组合数据库",
+    heroBadge2: "直播对战树",
+    heroBadge3: "积分对战",
     bioTitle: "SPINDEX 是什么",
     bio: "SPINDEX 串联日常 Beyblade X 玩法：研究零件、规划比赛组合、举办赛事、记录 OverDrive 结果，并用清楚的公开记录推动玩家成长。",
     totalParts: "已收录零件",
@@ -102,6 +141,37 @@ const copy = {
     communityText: "为 Beyblade X 玩家、收藏家、主办与裁判打造的社群项目。目标很简单：让本地对战更容易组织、更容易观看，也更容易成长。",
     viewAll: "查看全部零件",
     open: "进入",
+    videoTitle: "Beyblade X 零件系统",
+    videoSub: "快速理解 Beyblade X 如何拆分成影响性能的不同零件。",
+    videoNote: "先看零件结构，再进入组合实验室研究配置。",
+    startTitle: "从这里开始",
+    startSub: "按照你今天要做的事情选择入口。",
+    guide: [
+      {
+        href: "/catalog?tab=builder",
+        step: "01",
+        label: "先建立组合",
+        text: "进入组合实验室，从已收录零件中组出可比赛的配置。",
+      },
+      {
+        href: "/battle",
+        step: "02",
+        label: "再进行对战",
+        text: "发布或接受 OverDrive 积分挑战，并记录比赛分数。",
+      },
+      {
+        href: "/beylive",
+        step: "03",
+        label: "追踪直播",
+        text: "查看直播对战树、桌号赛程、串流与已完成赛事。",
+      },
+      {
+        href: "/tournaments",
+        step: "04",
+        label: "主办赛事",
+        text: "建立、报名、自定义赛制，并控制 BEYLIVE 赛事流程。",
+      },
+    ],
     cards: [
       {
         href: "/catalog?tab=builder",
@@ -176,7 +246,7 @@ export default async function HomePage({
   return (
     <div>
       <section className="bg-grid border-b border-edge">
-        <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 lg:grid-cols-[1.02fr_0.98fr] lg:items-center lg:py-20">
+        <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 lg:grid-cols-[0.92fr_1.08fr] lg:items-center lg:py-16">
           <div>
             <div className="font-display text-[11px] font-bold uppercase tracking-[0.28em] text-accent">
               {page.kicker}
@@ -187,6 +257,17 @@ export default async function HomePage({
             <p className="mt-5 max-w-2xl text-base leading-relaxed text-ink-dim sm:text-lg">
               {page.subtitle}
             </p>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              {[page.heroBadge1, page.heroBadge2, page.heroBadge3].map((badge) => (
+                <span
+                  key={badge}
+                  className="rounded border border-edge bg-panel/80 px-3 py-1.5 font-display text-[10px] font-bold uppercase tracking-wider text-accent-2"
+                >
+                  {badge}
+                </span>
+              ))}
+            </div>
 
             <div className="mt-7 flex flex-wrap gap-3">
               <Link
@@ -213,35 +294,59 @@ export default async function HomePage({
             </div>
           </div>
 
-          <div className="relative min-h-[25rem] overflow-hidden rounded-md border border-edge bg-panel/70">
-            <div className="absolute left-4 top-4 z-10 rounded bg-bg/80 px-3 py-1.5 font-display text-[10px] font-bold uppercase tracking-wider text-accent-2">
-              {page.spotlight}
+          <div className="overflow-hidden rounded-md border border-edge bg-panel/80 shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
+            <div className="border-b border-edge bg-bg/70 px-4 py-3">
+              <div className="font-display text-[10px] font-bold uppercase tracking-[0.24em] text-accent-2">
+                {page.videoTitle}
+              </div>
+              <p className="mt-1 text-xs text-ink-dim">{page.videoSub}</p>
             </div>
-            {heroBlade && (
-              <div className="absolute inset-x-8 top-12 h-56 sm:inset-x-12 sm:h-64">
-                <PartImage
-                  src={heroBlade.image}
-                  alt={locale === "zh" ? heroBlade.zh : heroBlade.enFull}
-                  fallbackLabel="X"
-                  priority
-                  sizes="(max-width: 1024px) 85vw, 420px"
-                  className="scale-105"
-                />
+            <div className="aspect-video bg-bg">
+              <iframe
+                src={`https://www.youtube-nocookie.com/embed/${BEYBLADE_PARTS_VIDEO_ID}?rel=0&modestbranding=1`}
+                title={page.videoTitle}
+                className="h-full w-full"
+                loading="lazy"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+            </div>
+            <div className="grid gap-3 border-t border-edge bg-bg/70 p-4 sm:grid-cols-[1fr_1.25fr]">
+              <div>
+                <div className="font-display text-[10px] font-bold uppercase tracking-wider text-ink-dim">
+                  {page.videoNote}
+                </div>
+                {heroBlade && (
+                  <Link
+                    href={`/${locale}/parts/blade/${heroBlade.id}`}
+                    className="mt-3 flex items-center gap-3 rounded-md border border-edge bg-panel p-2 transition hover:border-accent/60"
+                    aria-label={locale === "zh" ? heroBlade.zh : heroBlade.enFull}
+                  >
+                    <span className="block h-14 w-16 shrink-0">
+                      <PartImage
+                        src={heroBlade.image}
+                        alt={locale === "zh" ? heroBlade.zh : heroBlade.enFull}
+                        fallbackLabel="X"
+                        sizes="96px"
+                      />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block font-display text-xs font-bold uppercase tracking-wider text-ink-dim">
+                        {page.featuredCode}
+                      </span>
+                      <span className="block truncate text-sm font-semibold text-ink">
+                        {locale === "zh" ? heroBlade.zh : heroBlade.enFull}
+                      </span>
+                    </span>
+                  </Link>
+                )}
               </div>
-            )}
-            <div className="absolute inset-x-0 bottom-0 border-t border-edge bg-bg/80 p-4">
-              <div className="font-display text-xs font-bold uppercase tracking-wider text-ink-dim">
-                {page.featuredCode}
-              </div>
-              <div className="mt-1 truncate font-display text-xl font-black text-ink">
-                {heroBlade ? (locale === "zh" ? heroBlade.zh : heroBlade.enFull) : "Beyblade X"}
-              </div>
-              <div className="mt-3 grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {supportBlades.map((blade) => (
                   <Link
                     key={blade.id}
                     href={`/${locale}/parts/blade/${blade.id}`}
-                    className="group h-20 rounded-md border border-edge bg-panel-2 p-2 transition hover:border-accent/60"
+                    className="group h-24 rounded-md border border-edge bg-panel p-2 transition hover:border-accent/60"
                     aria-label={locale === "zh" ? blade.zh : blade.enFull}
                   >
                     <PartImage
@@ -255,6 +360,30 @@ export default async function HomePage({
                 ))}
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-b border-edge">
+        <div className="mx-auto grid max-w-6xl gap-4 px-4 py-7 lg:grid-cols-[14rem_1fr] lg:items-stretch">
+          <div>
+            <h2 className="font-display text-xl font-black tracking-wide">{page.startTitle}</h2>
+            <p className="mt-2 text-sm leading-relaxed text-ink-dim">{page.startSub}</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {page.guide.map((item) => (
+              <Link
+                key={item.href}
+                href={`/${locale}${item.href}`}
+                className="group rounded-md border border-edge bg-panel px-4 py-3 transition hover:-translate-y-0.5 hover:border-accent/60"
+              >
+                <div className="font-display text-[10px] font-black text-accent-2">{item.step}</div>
+                <div className="mt-1 font-display text-sm font-bold tracking-wide group-hover:text-accent">
+                  {item.label}
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-ink-dim">{item.text}</p>
+              </Link>
+            ))}
           </div>
         </div>
       </section>
