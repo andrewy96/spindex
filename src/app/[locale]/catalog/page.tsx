@@ -9,7 +9,7 @@ import BuilderClient from "@/components/BuilderClient";
 import ComboRankingsPanel from "@/components/ComboRankingsPanel";
 
 type SearchParams = { [key: string]: string | string[] | undefined };
-type WorkspaceTab = "catalog" | "builder" | "rankings";
+type WorkspaceTab = "catalog" | "builder" | "rankings" | "rpmTester";
 
 const BUILDER_QUERY_KEYS = ["b", "l", "r", "t", "a", "ob", "ol", "or", "ot", "oa"] as const;
 
@@ -25,6 +25,8 @@ function resolveTab(searchParams: SearchParams): WorkspaceTab {
 }
 
 function workspaceHref(locale: Locale, tab: WorkspaceTab, searchParams: SearchParams): string {
+  if (tab === "rpmTester") return `/${locale}/catalog/rpm-tester`;
+
   const params = new URLSearchParams();
   if (tab !== "catalog") params.set("tab", tab);
 
@@ -72,6 +74,7 @@ export default async function CatalogPage({
     { key: "catalog", label: dict.nav.catalog },
     { key: "builder", label: dict.nav.builder },
     { key: "rankings", label: dict.nav.rankings },
+    { key: "rpmTester", label: "Balancing RPM Tester" },
   ];
 
   const title =
@@ -99,7 +102,7 @@ export default async function CatalogPage({
       </h1>
       <p className="mb-6 mt-1 text-sm text-ink-dim">{subtitle}</p>
 
-      <div className="mb-8 flex gap-1 border-b border-edge">
+      <div className="mb-8 flex flex-wrap gap-1 border-b border-edge">
         {tabs.map((item) => (
           <Link
             key={item.key}
