@@ -185,6 +185,7 @@ export default function BuilderClient({ locale, dict }: { locale: Locale; dict: 
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { enabled, loading: authLoading, session } = useAuth();
+  const preserveBuilderTab = pathname.endsWith("/catalog") && searchParams.get("tab") === "builder";
 
   const [bladeId, setBladeId] = useState<string | null>(() => searchParams.get("b"));
   const [lockChipId, setLockChipId] = useState<string | null>(() => searchParams.get("l"));
@@ -241,6 +242,7 @@ export default function BuilderClient({ locale, dict }: { locale: Locale; dict: 
   // Keep both builds in the URL so language switching preserves the matchup.
   useEffect(() => {
     const params = comboToParams(combo);
+    if (preserveBuilderTab) params.set("tab", "builder");
     if (opponentCombo.blade) params.set("ob", opponentCombo.blade.id);
     if (opponentCombo.lockChip && opponentCombo.blade?.cx) {
       params.set("ol", opponentCombo.lockChip.id);
@@ -253,7 +255,7 @@ export default function BuilderClient({ locale, dict }: { locale: Locale; dict: 
 
     const next = params.toString();
     router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
-  }, [combo, opponentCombo, pathname, router]);
+  }, [combo, opponentCombo, pathname, preserveBuilderTab, router]);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);

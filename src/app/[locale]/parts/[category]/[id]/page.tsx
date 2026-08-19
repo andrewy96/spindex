@@ -90,7 +90,7 @@ function BladeDetail({ blade, locale, dict }: { blade: Blade; locale: Locale; di
   const altName = locale === "zh" ? blade.enFull : blade.zh;
   const variants = bladeVariants(blade.canonical).filter((v) => v.id !== blade.id);
   const stockLockChip = blade.lockChip ? findLockChip(blade.lockChip) : null;
-  const builderHref = `/${locale}/builder?b=${encodeURIComponent(blade.id)}${
+  const builderHref = `/${locale}/catalog?tab=builder&b=${encodeURIComponent(blade.id)}${
     blade.cx && blade.lockChip ? `&l=${encodeURIComponent(blade.lockChip)}` : ""
   }${
     blade.stockRatchet ? `&r=${encodeURIComponent(blade.stockRatchet)}` : ""
@@ -302,7 +302,7 @@ function SimpleDetail({
           </div>
 
           <Link
-            href={`/${locale}/builder?${builderParam}=${encodeURIComponent(id)}`}
+            href={`/${locale}/catalog?tab=builder&${builderParam}=${encodeURIComponent(id)}`}
             className="clip-x mt-6 inline-block bg-accent px-6 py-3 font-display text-sm font-bold tracking-wider text-bg transition hover:brightness-110"
           >
             {dict.part.useInBuilder} →

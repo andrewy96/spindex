@@ -360,14 +360,41 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
 
   useEffect(() => {
     if (!supabase) return;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const refresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        load();
+      }, 150);
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+
     const channel = supabase
       .channel(`beylive-live-${id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "tournaments", filter: `id=eq.${id}` }, load)
-      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_matches", filter: `tournament_id=eq.${id}` }, load)
-      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_players" }, load)
-      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_rounds" }, load)
-      .subscribe();
+      .on("postgres_changes", { event: "*", schema: "public", table: "tournaments", filter: `id=eq.${id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_matches", filter: `tournament_id=eq.${id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_players" }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_rounds" }, refresh)
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") load();
+      });
+
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", load);
+    window.addEventListener("online", load);
+    const fallbackRefresh = window.setInterval(() => {
+      if (document.visibilityState === "visible") load();
+    }, 8000);
+
     return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      window.clearInterval(fallbackRefresh);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", load);
+      window.removeEventListener("online", load);
       supabase?.removeChannel(channel);
     };
   }, [id, load]);

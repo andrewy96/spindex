@@ -10,6 +10,7 @@ import {
   FINISH_POINTS,
   Finish,
   supabase,
+  TournamentFormat,
 } from "@/lib/supabase";
 import {
   BEYLIVE_FINISHES,
@@ -36,9 +37,14 @@ import QrCodeBadge from "./QrCodeBadge";
 
 const FINISHES = BEYLIVE_FINISHES;
 
-function matchStageLabel(match: BeyliveMatch) {
+type FormatAwareBeyliveMatch = BeyliveMatch & { tournament_format?: TournamentFormat | null };
+
+function matchStageLabel(match: BeyliveMatch, tournamentFormat?: TournamentFormat | null) {
+  const format = tournamentFormat ?? (match as FormatAwareBeyliveMatch).tournament_format ?? null;
   if (match.bracket === "grand") return "Championship";
-  if (match.bracket === "losers") return "Consolation";
+  if (match.bracket === "losers") {
+    return format === "single_elimination" || format === "group_stage" ? "3rd Place" : "Consolation";
+  }
   return `Round ${match.round_no}`;
 }
 
@@ -195,7 +201,7 @@ export default function BeyliveMatchClient({
 
   const load = useCallback(async () => {
     if (!supabase) return;
-    const [{ data }, { data: partnerData }] = await Promise.all([
+    const [{ data }, { data: partnerData }, { data: tournamentData }] = await Promise.all([
       supabase
         .from("beylive_matches")
         .select(BEYLIVE_MATCH_SELECT)
@@ -206,8 +212,14 @@ export default function BeyliveMatchClient({
         .select("state")
         .eq("tournament_id", tournamentId)
         .maybeSingle(),
+      supabase
+        .from("tournaments")
+        .select("format")
+        .eq("id", tournamentId)
+        .maybeSingle(),
     ]);
-    setMatch((data as unknown as BeyliveMatch | null) ?? null);
+    const format = (tournamentData?.format as TournamentFormat | undefined) ?? null;
+    setMatch(data ? ({ ...(data as unknown as BeyliveMatch), tournament_format: format } as FormatAwareBeyliveMatch) : null);
     setLocalPartnerState((partnerData?.state as LocalPartnerState | undefined) ?? null);
     setLoading(false);
   }, [matchId, tournamentId]);

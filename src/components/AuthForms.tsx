@@ -41,10 +41,28 @@ function NotConfigured({ dict }: { dict: Dict }) {
 
 export function LoginForm({ locale, dict }: { locale: Locale; dict: Dict }) {
   const router = useRouter();
+  const homeHref = `/${locale}`;
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    let active = true;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (active && data.session) router.replace(homeHref);
+    });
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) router.replace(homeHref);
+    });
+
+    return () => {
+      active = false;
+      data.subscription.unsubscribe();
+    };
+  }, [homeHref, router]);
 
   if (!supabase) return <NotConfigured dict={dict} />;
 
@@ -60,7 +78,7 @@ export function LoginForm({ locale, dict }: { locale: Locale; dict: Dict }) {
     });
     setBusy(false);
     if (err) return setError(dict.auth.loginFailed);
-    router.push(`/${locale}/me`);
+    router.replace(homeHref);
   };
 
   return (

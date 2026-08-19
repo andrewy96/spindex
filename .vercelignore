@@ -1,0 +1,12 @@
+.git
+.claude
+.next
+.next-local
+node_modules
+outputs
+android
+ios
+docs
+supabase
+*.tsbuildinfo
+.env*

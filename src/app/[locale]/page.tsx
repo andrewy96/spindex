@@ -57,7 +57,7 @@ export default async function HomePage({
           </p>
           <div className="flex flex-wrap gap-3 pt-2">
             <Link
-              href={`/${locale}/builder`}
+              href={`/${locale}/catalog?tab=builder`}
               className="clip-x bg-accent px-6 py-3 font-display text-sm font-bold tracking-wider text-bg transition hover:brightness-110"
             >
               {dict.home.ctaBuilder} →

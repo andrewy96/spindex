@@ -55,7 +55,7 @@ export default function ComboRankingsPanel({ locale, dict }: { locale: Locale; d
             </div>
             {r.builderQuery && (
               <Link
-                href={`/${locale}/builder?${r.builderQuery}`}
+                href={`/${locale}/catalog?tab=builder&${r.builderQuery}`}
                 className="clip-x mt-4 inline-block bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110"
               >
                 {dict.rankings.build} →
@@ -113,7 +113,7 @@ export default function ComboRankingsPanel({ locale, dict }: { locale: Locale; d
                 <td className="px-4 py-2.5 text-right">
                   {r.builderQuery && (
                     <Link
-                      href={`/${locale}/builder?${r.builderQuery}`}
+                      href={`/${locale}/catalog?tab=builder&${r.builderQuery}`}
                       className="whitespace-nowrap text-xs font-semibold text-accent hover:underline"
                     >
                       {dict.rankings.build} →

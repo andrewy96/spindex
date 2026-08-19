@@ -70,8 +70,7 @@ export default function Nav({ locale, dict }: { locale: Locale; dict: Dict }) {
 
   const links = [
     { href: `/${locale}`, label: dict.nav.home, exact: true },
-    { href: `/${locale}/catalog`, label: dict.nav.catalog },
-    { href: `/${locale}/builder`, label: dict.nav.builder },
+    { href: `/${locale}/catalog`, label: dict.nav.comboLab },
     { href: `/${locale}/rankings`, label: dict.nav.rankings },
     { href: `/${locale}/tournaments`, label: dict.nav.tournaments },
     { href: `/${locale}/beylive`, label: "BEYLIVE" },

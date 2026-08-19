@@ -138,7 +138,10 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
 
   const post = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supabase || !profile) return;
+    if (!supabase || !profile || !isSuperadmin) {
+      setError("Only approved hosts can create tournaments.");
+      return;
+    }
     setBusy(true);
     setError(null);
     const { error: err } = await supabase.from("tournaments").insert({
@@ -241,13 +244,17 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
               </button>
             ))}
           </div>
-          {profile ? (
+          {profile && isSuperadmin ? (
             <button
               onClick={() => setShowPost(!showPost)}
               className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110"
             >
               + {t.hostCta}
             </button>
+          ) : profile ? (
+            <span className="rounded-md border border-edge bg-panel px-3 py-2 text-xs font-semibold text-ink-dim">
+              Approved hosts only
+            </span>
           ) : (
             <Link
               href={`/${locale}/login`}
@@ -259,7 +266,7 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
         </div>
       </div>
 
-      {showPost && profile && (
+      {showPost && profile && isSuperadmin && (
         <form onSubmit={post} className="panel mb-6 grid gap-3 p-5 sm:grid-cols-2">
           <div className="sm:col-span-2 font-display text-sm font-bold tracking-wider">
             {t.hostFormTitle}

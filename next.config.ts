@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  distDir:
+    process.env.NEXT_DIST_DIR ||
+    (process.env.NODE_ENV === "development" ? ".next-local" : ".next"),
   outputFileTracingRoot: process.cwd(),
   images: {
     // Part art is line-art PNG — AVIF/WebP cut it dramatically.
