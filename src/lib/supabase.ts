@@ -16,6 +16,8 @@ export interface Profile {
   city: string | null;
   player_code: string | null;
   stars: number;
+  diamonds: number;
+  gold_bars: number;
   wins: number;
   losses: number;
   /** True for a host-added walk-in with no login (no email/phone, created via add_tournament_walkin). */

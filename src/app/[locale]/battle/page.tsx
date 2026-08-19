@@ -5,25 +5,33 @@ import { notFound } from "next/navigation";
 import { getDict, isLocale, Locale, locales } from "@/i18n";
 import BattleBoardClient from "@/components/BattleBoardClient";
 import BattleRecordsClient from "@/components/BattleRecordsClient";
+import OverdriveExchangeClient from "@/components/OverdriveExchangeClient";
 import PlayerRankingsClient from "@/components/PlayerRankingsClient";
 import ScoreboardClient from "@/components/ScoreboardClient";
 
 type SearchParams = { [key: string]: string | string[] | undefined };
-type PointChallengeTab = "challenges" | "rankings" | "records" | "scoreboard";
+type OverdriveTab = "challenges" | "rankings" | "records" | "scoreboard" | "exchange";
 
 function firstValue(value: string | string[] | undefined): string | null {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
 }
 
-function resolveTab(searchParams: SearchParams): PointChallengeTab {
+function resolveTab(searchParams: SearchParams): OverdriveTab {
   const rawTab = firstValue(searchParams.tab);
-  if (rawTab === "rankings" || rawTab === "records" || rawTab === "scoreboard") return rawTab;
+  if (
+    rawTab === "rankings" ||
+    rawTab === "records" ||
+    rawTab === "scoreboard" ||
+    rawTab === "exchange"
+  ) {
+    return rawTab;
+  }
   if (firstValue(searchParams.c)) return "scoreboard";
   return "challenges";
 }
 
-function pointChallengeHref(locale: Locale, tab: PointChallengeTab, searchParams: SearchParams): string {
+function overdriveHref(locale: Locale, tab: OverdriveTab, searchParams: SearchParams): string {
   const params = new URLSearchParams();
   if (tab !== "challenges") params.set("tab", tab);
   if (tab === "scoreboard") {
@@ -62,11 +70,12 @@ export default async function BattlePage({
   const dict = getDict(locale);
   const sp = await searchParams;
   const tab = resolveTab(sp);
-  const tabs: { key: PointChallengeTab; label: string }[] = [
+  const tabs: { key: OverdriveTab; label: string }[] = [
     { key: "challenges", label: dict.battle.navChallenges },
     { key: "rankings", label: dict.battle.navRankings },
     { key: "records", label: dict.battle.navRecords },
     { key: "scoreboard", label: dict.battle.navScoreboard },
+    { key: "exchange", label: dict.battle.navExchange },
   ];
 
   return (
@@ -94,7 +103,7 @@ export default async function BattlePage({
         {tabs.map((item) => (
           <Link
             key={item.key}
-            href={pointChallengeHref(locale, item.key, sp)}
+            href={overdriveHref(locale, item.key, sp)}
             className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 font-display text-sm font-bold tracking-wide transition ${
               tab === item.key
                 ? "border-accent text-accent"
@@ -116,6 +125,8 @@ export default async function BattlePage({
         <Suspense fallback={null}>
           <ScoreboardClient locale={locale} dict={dict} />
         </Suspense>
+      ) : tab === "exchange" ? (
+        <OverdriveExchangeClient locale={locale} dict={dict} />
       ) : (
         <BattleBoardClient locale={locale} dict={dict} />
       )}

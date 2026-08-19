@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import type { Session } from "@supabase/supabase-js";
@@ -33,6 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(!!supabase);
+  const dailyLoginClaims = useRef(new Set<string>());
 
   const loadProfile = useCallback(async (userId: string | undefined) => {
     if (!supabase || !userId) {
@@ -47,18 +49,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile((data as Profile) ?? null);
   }, []);
 
+  const claimDailyLogin = useCallback(
+    async (userId: string | undefined) => {
+      if (!supabase || !userId) return;
+      const todayKey = new Date().toISOString().slice(0, 10);
+      const key = `${userId}:${todayKey}`;
+      if (dailyLoginClaims.current.has(key)) return;
+      dailyLoginClaims.current.add(key);
+
+      const { error } = await supabase.rpc("claim_daily_login");
+      if (!error) await loadProfile(userId);
+    },
+    [loadProfile]
+  );
+
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(async ({ data }) => {
       setSession(data.session);
-      loadProfile(data.session?.user.id).finally(() => setLoading(false));
+      await loadProfile(data.session?.user.id);
+      await claimDailyLogin(data.session?.user.id);
+      setLoading(false);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s);
-      loadProfile(s?.user.id);
+      loadProfile(s?.user.id).then(() => claimDailyLogin(s?.user.id));
     });
     return () => sub.subscription.unsubscribe();
-  }, [loadProfile]);
+  }, [claimDailyLogin, loadProfile]);
 
   const refreshProfile = useCallback(
     () => loadProfile(session?.user.id),

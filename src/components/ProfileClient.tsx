@@ -112,8 +112,10 @@ export function ProfileHeader({
           <div className="text-sm text-ink-dim">{details.join(" / ")}</div>
         </div>
       </div>
-      <div className="mt-4 grid grid-cols-4 gap-2">
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <StatCard label={dict.battle.starsBalance} value={`${p.stars} pts`} accent />
+        <StatCard label={dict.exchange.diamonds} value={p.diamonds ?? 0} accent />
+        <StatCard label={dict.exchange.goldBars} value={p.gold_bars ?? 0} />
         <StatCard label={dict.battle.wins} value={p.wins} />
         <StatCard label={dict.battle.losses} value={p.losses} />
         <StatCard label={dict.battle.winRate} value={`${rate}%`} />

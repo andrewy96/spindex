@@ -364,6 +364,7 @@ export function RegisterForm({ locale, dict }: { locale: Locale; dict: Dict }) {
   const [city, setCity] = useState("");
   const [gender, setGender] = useState<"male" | "female" | "">("");
   const [birthday, setBirthday] = useState("");
+  const [referralCode, setReferralCode] = useState("");
   /** The picked file is kept so the framing can be redone from the original. */
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [cropping, setCropping] = useState<File | null>(null);
@@ -468,6 +469,7 @@ export function RegisterForm({ locale, dict }: { locale: Locale; dict: Dict }) {
         gender,
         birthday,
         age,
+        referralCode: referralCode.trim() || undefined,
       }),
     });
     if (!res.ok) {
@@ -673,6 +675,19 @@ export function RegisterForm({ locale, dict }: { locale: Locale; dict: Dict }) {
           required
           className={inputCls}
         />
+      </div>
+      <div>
+        <label className={labelCls}>{dict.auth.referralCode}</label>
+        <input
+          value={referralCode}
+          onChange={(e) => setReferralCode(e.target.value)}
+          placeholder={dict.auth.referralCodePlaceholder}
+          maxLength={24}
+          autoCapitalize="characters"
+          spellCheck={false}
+          className={inputCls}
+        />
+        <p className="mt-1 text-[11px] text-ink-dim">{dict.auth.referralCodeHint}</p>
       </div>
       <div>
         <label className={labelCls}>{dict.auth.password}</label>

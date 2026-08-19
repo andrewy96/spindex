@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Dict, Locale } from "@/i18n";
-import { useAuth } from "@/lib/auth";
+import { useAuth, useIsSuperadmin } from "@/lib/auth";
 import {
   supabase,
   Challenge,
@@ -12,6 +12,7 @@ import {
   Match,
   MY_CITIES,
 } from "@/lib/supabase";
+import { BATTLE_WAGER_MAX, BATTLE_WAGER_MIN } from "@/lib/overdrive";
 import { profileDisplayName } from "@/lib/profileName";
 import { matchToShareData } from "@/lib/shareCard";
 import ShareMatchModal from "./ShareMatchModal";
@@ -56,7 +57,9 @@ function ChallengeCard({
   meId,
   onAccept,
   onCancel,
+  onDelete,
   busy,
+  isAdmin,
 }: {
   c: Challenge;
   locale: Locale;
@@ -64,7 +67,9 @@ function ChallengeCard({
   meId: string | null;
   onAccept: (c: Challenge) => void;
   onCancel: (c: Challenge) => void;
+  onDelete: (c: Challenge) => void;
   busy: boolean;
+  isAdmin: boolean;
 }) {
   const [shareMatch, setShareMatch] = useState<Match | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
@@ -202,6 +207,15 @@ function ChallengeCard({
             {dict.battle.cancel}
           </button>
         )}
+        {isAdmin && (
+          <button
+            onClick={() => onDelete(c)}
+            disabled={busy}
+            className="clip-x border border-atk/50 bg-atk/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-atk transition enabled:hover:bg-atk enabled:hover:text-bg disabled:opacity-50"
+          >
+            {dict.admin.deleteChallenge}
+          </button>
+        )}
         {canScore && (
           <Link
             href={`/${locale}/battle?tab=scoreboard&c=${c.id}`}
@@ -239,7 +253,8 @@ function ChallengeCard({
 }
 
 export default function BattleBoardClient({ locale, dict }: { locale: Locale; dict: Dict }) {
-  const { enabled, profile } = useAuth();
+  const { enabled, profile, session } = useAuth();
+  const isAdmin = useIsSuperadmin();
   const [tab, setTab] = useState<"open" | "mine">("open");
   const [city, setCity] = useState("all");
   const [challenges, setChallenges] = useState<Challenge[]>([]);
@@ -254,12 +269,16 @@ export default function BattleBoardClient({ locale, dict }: { locale: Locale; di
   const [pMode, setPMode] = useState<ChallengeMode>("player");
   const [pFormat, setPFormat] = useState<ChallengeFormat>("single");
   const [pTeamSize, setPTeamSize] = useState(2);
-  const [pWager, setPWager] = useState(1);
+  const [pWager, setPWager] = useState(BATTLE_WAGER_MIN);
   const [pTargetScore, setPTargetScore] = useState(DEFAULT_WIN_SCORE);
   const [pNote, setPNote] = useState("");
   const activeTeamSize = pFormat === "team" ? pTeamSize : 1;
-  const minPostWager = activeTeamSize;
-  const maxPostWager = profile ? (pMode === "judge" ? 50 : Math.min(50, profile.stars)) : 0;
+  const minPostWager = BATTLE_WAGER_MIN;
+  const maxPostWager = profile
+    ? pMode === "judge"
+      ? BATTLE_WAGER_MAX
+      : Math.min(BATTLE_WAGER_MAX, profile.stars)
+    : 0;
   const canCoverPost = !!profile && (pMode === "judge" || maxPostWager >= minPostWager);
 
   const load = useCallback(async () => {
@@ -362,6 +381,23 @@ export default function BattleBoardClient({ locale, dict }: { locale: Locale; di
     setBusy(true);
     await supabase.from("challenges").update({ status: "cancelled" }).eq("id", c.id);
     setBusy(false);
+    load();
+  };
+
+  const deleteChallenge = async (c: Challenge) => {
+    if (!session) return;
+    if (!window.confirm(dict.admin.deleteChallengeConfirm)) return;
+    setBusy(true);
+    setError(null);
+    const res = await fetch(`/api/admin/challenges/${c.id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    setBusy(false);
+    if (!res.ok) {
+      setError(dict.admin.error);
+      return;
+    }
     load();
   };
 
@@ -569,7 +605,9 @@ export default function BattleBoardClient({ locale, dict }: { locale: Locale; di
               meId={profile?.id ?? null}
               onAccept={accept}
               onCancel={cancel}
+              onDelete={deleteChallenge}
               busy={busy}
+              isAdmin={isAdmin}
             />
           ))}
         </div>

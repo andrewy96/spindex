@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { OVERDRIVE_SIGNUP_POINTS } from "@/lib/overdrive";
 import { normalizeMyPhone } from "@/lib/phone";
 
 const HANDLE_RE = /^[a-zA-Z0-9_]{3,20}$/;
@@ -44,6 +45,8 @@ export async function POST(request: Request) {
   const city = typeof input.city === "string" && input.city ? input.city : null;
   const gender = typeof input.gender === "string" ? input.gender : "";
   const birthday = typeof input.birthday === "string" ? input.birthday : "";
+  const referralCode =
+    typeof input.referralCode === "string" ? input.referralCode.trim() : "";
   const age = ageFromBirthday(birthday);
   const e164 = normalizeMyPhone(phone);
 
@@ -92,5 +95,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "profile_update_failed" }, { status: 400 });
   }
 
-  return NextResponse.json({ id: data.user.id });
+  const { error: pointsError } = await admin
+    .from("profiles")
+    .update({ stars: OVERDRIVE_SIGNUP_POINTS })
+    .eq("id", data.user.id);
+
+  if (pointsError) {
+    await admin.auth.admin.deleteUser(data.user.id);
+    return NextResponse.json({ error: "profile_update_failed" }, { status: 400 });
+  }
+
+  let referralApplied = false;
+  if (referralCode) {
+    const { data: applied } = await admin.rpc("apply_referral_code", {
+      p_referred: data.user.id,
+      p_code: referralCode,
+    });
+    referralApplied = applied === true;
+  }
+
+  return NextResponse.json({ id: data.user.id, referralApplied });
 }
