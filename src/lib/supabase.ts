@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import type { TournamentFormatConfig } from "./tournamentFormat";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -158,6 +159,7 @@ export interface CommunityTournament {
   venue: string;
   starts_at: string;
   format: TournamentFormat;
+  format_config: TournamentFormatConfig | null;
   max_players: number;
   live_enabled: boolean;
   stream_url: string | null;

@@ -11,6 +11,13 @@ import {
   TournamentFormat,
 } from "@/lib/supabase";
 import { profileDisplayName } from "@/lib/profileName";
+import TournamentFormatDesigner, { TournamentFormatSummary } from "./TournamentFormatDesigner";
+import {
+  defaultTournamentFormatConfig,
+  normalizeTournamentFormatConfig,
+  tournamentFormatConfigForSave,
+  TournamentFormatConfig,
+} from "@/lib/tournamentFormat";
 
 const inputCls =
   "w-full rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent";
@@ -48,6 +55,10 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
   const [startsAt, setStartsAt] = useState("");
   const [format, setFormat] = useState<TournamentFormat>("single_elimination");
   const [maxPlayers, setMaxPlayers] = useState("16");
+  const [targetScore, setTargetScore] = useState("4");
+  const [formatConfig, setFormatConfig] = useState<TournamentFormatConfig>(() =>
+    defaultTournamentFormatConfig("single_elimination", 16, 4, false),
+  );
   const [note, setNote] = useState("");
 
   const formats = useMemo(
@@ -87,6 +98,35 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
     return [up, done];
   }, [items]);
   const visible = timeScope === "upcoming" ? upcoming : past;
+  const maxPlayersNumber = Number(maxPlayers) || 16;
+  const targetScoreNumber = Number(targetScore) || 4;
+
+  const changeFormat = (next: TournamentFormat) => {
+    setFormat(next);
+    setFormatConfig((current) =>
+      defaultTournamentFormatConfig(next, maxPlayersNumber, targetScoreNumber, current.enabled),
+    );
+  };
+
+  const changeMaxPlayers = (value: string) => {
+    const nextMaxPlayers = Number(value) || 16;
+    setMaxPlayers(value);
+    setFormatConfig((current) =>
+      current.enabled
+        ? normalizeTournamentFormatConfig(current, format, nextMaxPlayers, targetScoreNumber)
+        : current,
+    );
+  };
+
+  const changeTargetScore = (value: string) => {
+    const nextTargetScore = Number(value) || 4;
+    setTargetScore(value);
+    setFormatConfig((current) =>
+      current.enabled
+        ? normalizeTournamentFormatConfig(current, format, maxPlayersNumber, nextTargetScore)
+        : current,
+    );
+  };
 
   if (!enabled) {
     return (
@@ -108,7 +148,9 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
       venue: venue.trim(),
       starts_at: new Date(startsAt).toISOString(),
       format,
+      format_config: tournamentFormatConfigForSave(formatConfig, format, maxPlayersNumber, targetScoreNumber),
       max_players: Number(maxPlayers) || 16,
+      target_score: targetScoreNumber,
       note: note.trim() || null,
     });
     setBusy(false);
@@ -122,6 +164,8 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
     setStartsAt("");
     setFormat("single_elimination");
     setMaxPlayers("16");
+    setTargetScore("4");
+    setFormatConfig(defaultTournamentFormatConfig("single_elimination", 16, 4, false));
     setNote("");
     load();
   };
@@ -242,7 +286,11 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
           </div>
           <div>
             <label className="mb-1 block text-xs text-ink-dim">{t.hostMaxPlayers}</label>
-            <input type="number" min={2} max={256} value={maxPlayers} onChange={(e) => setMaxPlayers(e.target.value)} className={inputCls} required />
+            <input type="number" min={2} max={256} value={maxPlayers} onChange={(e) => changeMaxPlayers(e.target.value)} className={inputCls} required />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-ink-dim">{t.hostTargetScore}</label>
+            <input type="number" min={1} max={30} value={targetScore} onChange={(e) => changeTargetScore(e.target.value)} className={inputCls} required />
           </div>
           <div className="sm:col-span-2">
             <label className="mb-1 block text-xs text-ink-dim">{t.hostFormat}</label>
@@ -251,7 +299,7 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
                 <button
                   key={f.key}
                   type="button"
-                  onClick={() => setFormat(f.key)}
+                  onClick={() => changeFormat(f.key)}
                   className={`rounded-md border p-3 text-left transition ${
                     format === f.key
                       ? "border-accent bg-accent/10"
@@ -266,6 +314,14 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
               ))}
             </div>
           </div>
+          <TournamentFormatDesigner
+            value={formatConfig}
+            onChange={setFormatConfig}
+            format={format}
+            maxPlayers={maxPlayersNumber}
+            targetScore={targetScoreNumber}
+            labels={t}
+          />
           <div className="sm:col-span-2">
             <label className="mb-1 block text-xs text-ink-dim">{t.hostNote}</label>
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={280} className={inputCls} />
@@ -336,6 +392,14 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
                   </div>
                 </div>
                 {item.note && <p className="text-sm leading-relaxed text-ink-dim">{item.note}</p>}
+                <TournamentFormatSummary
+                  value={item.format_config}
+                  format={item.format}
+                  maxPlayers={item.max_players}
+                  targetScore={item.target_score ?? 4}
+                  labels={t}
+                  compact
+                />
                 <div className="flex flex-wrap gap-1.5 text-[10px] font-semibold">
                   <span className="rounded bg-panel px-2 py-0.5 text-accent">
                     {t.hostJoined}: {joined.length}/{item.max_players}

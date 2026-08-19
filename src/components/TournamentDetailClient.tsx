@@ -12,6 +12,13 @@ import {
 } from "@/lib/supabase";
 import { profileDisplayName } from "@/lib/profileName";
 import PartnerBattleRunner from "@/components/PartnerBattleRunner";
+import TournamentFormatDesigner, { TournamentFormatSummary } from "@/components/TournamentFormatDesigner";
+import {
+  defaultTournamentFormatConfig,
+  normalizeTournamentFormatConfig,
+  tournamentFormatConfigForSave,
+  TournamentFormatConfig,
+} from "@/lib/tournamentFormat";
 
 const inputCls =
   "w-full rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent";
@@ -59,6 +66,10 @@ export default function TournamentDetailClient({
   const [startsAt, setStartsAt] = useState("");
   const [format, setFormat] = useState<TournamentFormat>("single_elimination");
   const [maxPlayers, setMaxPlayers] = useState("16");
+  const [targetScore, setTargetScore] = useState("4");
+  const [formatConfig, setFormatConfig] = useState<TournamentFormatConfig>(() =>
+    defaultTournamentFormatConfig("single_elimination", 16, 4, false),
+  );
   const [note, setNote] = useState("");
 
   const formats = useMemo(
@@ -83,6 +94,8 @@ export default function TournamentDetailClient({
     setStartsAt(toDateTimeInput(next.starts_at));
     setFormat(next.format);
     setMaxPlayers(String(next.max_players));
+    setTargetScore(String(next.target_score ?? 4));
+    setFormatConfig(normalizeTournamentFormatConfig(next.format_config, next.format, next.max_players, next.target_score ?? 4));
     setNote(next.note ?? "");
   };
 
@@ -151,6 +164,35 @@ export default function TournamentDetailClient({
   const mine = profile ? players.find((p) => p.user_id === profile.id) : null;
   const isHost = profile?.id === item.host;
   const formatLabel = formats.find((f) => f.key === item.format)?.label ?? item.format;
+  const maxPlayersNumber = Number(maxPlayers) || 16;
+  const targetScoreNumber = Number(targetScore) || 4;
+
+  const changeFormat = (next: TournamentFormat) => {
+    setFormat(next);
+    setFormatConfig((current) =>
+      defaultTournamentFormatConfig(next, maxPlayersNumber, targetScoreNumber, current.enabled),
+    );
+  };
+
+  const changeMaxPlayers = (value: string) => {
+    const nextMaxPlayers = Number(value) || 16;
+    setMaxPlayers(value);
+    setFormatConfig((current) =>
+      current.enabled
+        ? normalizeTournamentFormatConfig(current, format, nextMaxPlayers, targetScoreNumber)
+        : current,
+    );
+  };
+
+  const changeTargetScore = (value: string) => {
+    const nextTargetScore = Number(value) || 4;
+    setTargetScore(value);
+    setFormatConfig((current) =>
+      current.enabled
+        ? normalizeTournamentFormatConfig(current, format, maxPlayersNumber, nextTargetScore)
+        : current,
+    );
+  };
 
   const copyShareLink = async () => {
     await navigator.clipboard.writeText(window.location.href);
@@ -248,7 +290,9 @@ export default function TournamentDetailClient({
         venue: venue.trim(),
         starts_at: new Date(startsAt).toISOString(),
         format,
+        format_config: tournamentFormatConfigForSave(formatConfig, format, maxPlayersNumber, targetScoreNumber),
         max_players: Number(maxPlayers) || 16,
+        target_score: targetScoreNumber,
         note: note.trim() || null,
       })
       .eq("id", item.id);
@@ -310,14 +354,26 @@ export default function TournamentDetailClient({
           </div>
           <div>
             <label className="mb-1 block text-xs text-ink-dim">{t.hostMaxPlayers}</label>
-            <input type="number" min={2} max={256} value={maxPlayers} onChange={(e) => setMaxPlayers(e.target.value)} className={inputCls} required />
+            <input type="number" min={2} max={256} value={maxPlayers} onChange={(e) => changeMaxPlayers(e.target.value)} className={inputCls} required />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-ink-dim">{t.hostTargetScore}</label>
+            <input type="number" min={1} max={30} value={targetScore} onChange={(e) => changeTargetScore(e.target.value)} className={inputCls} required />
           </div>
           <div className="sm:col-span-2">
             <label className="mb-1 block text-xs text-ink-dim">{t.hostFormat}</label>
-            <select value={format} onChange={(e) => setFormat(e.target.value as TournamentFormat)} className={inputCls}>
+            <select value={format} onChange={(e) => changeFormat(e.target.value as TournamentFormat)} className={inputCls}>
               {formats.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
             </select>
           </div>
+          <TournamentFormatDesigner
+            value={formatConfig}
+            onChange={setFormatConfig}
+            format={format}
+            maxPlayers={maxPlayersNumber}
+            targetScore={targetScoreNumber}
+            labels={t}
+          />
           <div className="sm:col-span-2">
             <label className="mb-1 block text-xs text-ink-dim">{t.hostNote}</label>
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={280} className={inputCls} />
@@ -348,6 +404,13 @@ export default function TournamentDetailClient({
               <span className="rounded-full bg-accent-2/10 px-3 py-1 text-xs font-semibold text-accent-2">{formatLabel}</span>
             </div>
             {item.note && <p className="mt-4 text-sm leading-relaxed text-ink-dim">{item.note}</p>}
+            <TournamentFormatSummary
+              value={item.format_config}
+              format={item.format}
+              maxPlayers={item.max_players}
+              targetScore={item.target_score ?? 4}
+              labels={t}
+            />
             <div className="mt-4 flex flex-wrap gap-1.5 text-[10px] font-semibold">
               <span className="rounded bg-panel px-2 py-0.5 text-accent">
                 {t.hostJoined}: {item.format === "partner" ? partnerRoster.length : joined.length}/
