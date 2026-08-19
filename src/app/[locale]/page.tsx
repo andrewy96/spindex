@@ -128,13 +128,13 @@ export default async function HomePage({
           fill
           priority
           sizes="100vw"
-          className="absolute inset-0 -z-30 object-cover object-center"
+          className="absolute inset-0 -z-30 object-cover object-[66%_center] opacity-85 sm:object-contain sm:object-right sm:opacity-100"
         />
         <div className="absolute inset-0 -z-20 bg-[linear-gradient(90deg,#030504_0%,rgba(3,5,4,0.96)_30%,rgba(3,5,4,0.62)_53%,rgba(3,5,4,0.1)_100%)]" />
         <div className="absolute inset-0 -z-10 bg-[linear-gradient(180deg,rgba(3,5,4,0.08)_0%,rgba(3,5,4,0.02)_62%,#06080b_100%)]" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-bg to-transparent" />
 
-        <div className="mx-auto flex min-h-[calc(100svh-3.5rem)] max-w-6xl flex-col justify-center px-4 py-14">
+        <div className="mx-auto flex min-h-[calc(100svh-3.5rem)] max-w-[1760px] flex-col justify-center px-6 py-12 sm:px-12 lg:py-14">
           <div className="max-w-xl">
             <div className="flex flex-wrap items-center gap-3 font-display text-xs font-black uppercase text-accent">
               <span className="inline-block size-2 rounded-full bg-accent shadow-[0_0_18px_rgba(0,229,143,0.9)]" />
