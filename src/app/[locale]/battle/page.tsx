@@ -80,24 +80,11 @@ export default async function BattlePage({
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
-      <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-6 max-w-3xl">
         <h1 className="font-display text-3xl font-bold tracking-wide">{dict.battle.title}</h1>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href={`/${locale}/battle?tab=records`}
-            className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:border-accent/60"
-          >
-            {dict.battle.records}
-          </Link>
-          <Link
-            href={`/${locale}/battle?tab=scoreboard`}
-            className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-accent-2 transition hover:border-accent-2/60"
-          >
-            {dict.battle.scoreboard}
-          </Link>
-        </div>
+        <p className="mt-2 text-sm text-ink-dim">{dict.battle.subtitle}</p>
+        <p className="mt-2 text-sm leading-relaxed text-ink-dim">{dict.battle.bio}</p>
       </div>
-      <p className="mb-6 text-sm text-ink-dim">{dict.battle.subtitle}</p>
 
       <div className="mb-8 flex gap-1 overflow-x-auto border-b border-edge">
         {tabs.map((item) => (
