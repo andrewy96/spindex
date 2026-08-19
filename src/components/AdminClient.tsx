@@ -148,7 +148,7 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
     loadUsers(query);
   };
 
-  const adjustStars = async (user: AdminUser, delta: number) => {
+  const adjustPoints = async (user: AdminUser, delta: number) => {
     const headers = authHeaders();
     if (!headers) return;
     setBusy(`${user.id}:stars`);
@@ -464,14 +464,14 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
                   </div>
 
                   <div className="w-24 shrink-0 font-display text-2xl font-bold text-bal">
-                    ★{user.stars}
+                    {user.stars} pts
                   </div>
 
                   <div className="flex flex-wrap gap-2">
                     {[1, 5, -1].map((quick) => (
                       <button
                         key={quick}
-                        onClick={() => adjustStars(user, quick)}
+                        onClick={() => adjustPoints(user, quick)}
                         disabled={rowBusy}
                         className="h-9 rounded-md border border-edge bg-panel-2 px-3 font-display text-xs font-bold text-ink transition enabled:hover:border-accent enabled:hover:text-accent disabled:opacity-50"
                       >
@@ -506,7 +506,7 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
                     className="rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/60 focus:border-accent"
                   />
                   <button
-                    onClick={() => Number.isInteger(delta) && delta !== 0 && adjustStars(user, delta)}
+                    onClick={() => Number.isInteger(delta) && delta !== 0 && adjustPoints(user, delta)}
                     disabled={rowBusy || !Number.isInteger(delta) || delta === 0}
                     className="clip-x bg-accent-2 px-5 py-2.5 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
                   >

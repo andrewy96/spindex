@@ -100,7 +100,7 @@ export function shareSampleText(d: ShareCardData): string {
     d.firstToLabel,
     Object.values(d.labels.finish).join(""),
     d.labels.url,
-    "0123456789:★+…spindex",
+    "0123456789:pts+…spindex",
   ].join(" ");
 }
 
@@ -459,10 +459,10 @@ export function renderShareCard(
     }
   }
 
-  /* chips row — format / stars / first-to */
+  /* chips row — format / points / first-to */
   const chips: { text: string; color: string }[] = [
     { text: data.formatLabel, color: THEME.accent2 },
-    { text: `★${data.stars}`, color: THEME.bal },
+    { text: `${data.stars} pts`, color: THEME.bal },
     { text: data.firstToLabel, color: THEME.inkDim },
   ];
   drawChipRow(ctx, chips, 790, 30, display);

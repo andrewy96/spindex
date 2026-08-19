@@ -111,7 +111,7 @@ export default function PlayerRankingsClient({
               <div className="text-right">
                 <div className="font-display text-sm font-bold text-accent">{player.wins}W</div>
                 <div className="text-[10px] text-ink-dim">
-                  {winRate(player)}% / <span className="text-bal">{player.stars}★</span>
+                  {winRate(player)}% / <span className="text-bal">{player.stars} pts</span>
                 </div>
               </div>
             </Link>

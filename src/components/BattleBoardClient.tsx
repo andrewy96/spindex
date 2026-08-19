@@ -179,7 +179,7 @@ function ChallengeCard({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1.5">
           <StatusChip status={c.status} dict={dict} />
-          <span className="font-display text-sm font-bold text-bal">★{c.wager}</span>
+          <span className="font-display text-sm font-bold text-bal">{c.wager} pts</span>
         </div>
       </div>
       {c.note && <p className="text-sm leading-relaxed text-ink-dim">{c.note}</p>}
@@ -204,10 +204,10 @@ function ChallengeCard({
         )}
         {canScore && (
           <Link
-            href={`/${locale}/battle/score?c=${c.id}`}
+            href={`/${locale}/battle?tab=scoreboard&c=${c.id}`}
             className="clip-x bg-accent-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110"
           >
-            ⚔ {dict.battle.playNow}
+            {dict.battle.playNow}
           </Link>
         )}
         {c.status === "completed" && (
@@ -509,7 +509,7 @@ export default function BattleBoardClient({ locale, dict }: { locale: Locale; di
             <label className="mb-1 block text-xs text-ink-dim">
               {dict.battle.starQuantity}{" "}
               {canCoverPost
-                ? `(★${minPostWager}–${maxPostWager})`
+                ? `(${minPostWager}-${maxPostWager} pts)`
                 : `(${dict.battle.notEnoughStars})`}
             </label>
             <input

@@ -130,7 +130,7 @@ export default async function HomePage({
       <section className="mx-auto max-w-6xl px-4 py-14">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[
-            { href: `/${locale}/rankings`, t: dict.nav.rankings, x: dict.rankings.subtitle },
+            { href: `/${locale}/battle?tab=rankings`, t: dict.nav.battle, x: dict.battle.subtitle },
             { href: `/${locale}/tournaments`, t: dict.nav.tournaments, x: dict.tournaments.subtitle },
             { href: `/${locale}/gatherings`, t: dict.nav.gatherings, x: dict.gatherings.subtitle },
           ].map((card) => (

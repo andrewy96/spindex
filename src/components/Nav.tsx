@@ -18,7 +18,7 @@ function AuthChip({ locale, dict }: { locale: Locale; dict: Dict }) {
         className="flex items-center gap-1.5 rounded-md border border-accent/40 bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent transition hover:bg-accent/20"
       >
         @{profile.handle}
-        <span className="text-bal">★{profile.stars}</span>
+        <span className="text-bal">{profile.stars} pts</span>
       </Link>
     );
   }
@@ -71,12 +71,11 @@ export default function Nav({ locale, dict }: { locale: Locale; dict: Dict }) {
   const links = [
     { href: `/${locale}`, label: dict.nav.home, exact: true },
     { href: `/${locale}/catalog`, label: dict.nav.comboLab },
-    { href: `/${locale}/rankings`, label: dict.nav.rankings },
+    { href: `/${locale}/battle`, label: dict.nav.battle },
     { href: `/${locale}/tournaments`, label: dict.nav.tournaments },
     { href: `/${locale}/beylive`, label: "BEYLIVE" },
     { href: `/${locale}/gatherings`, label: dict.nav.gatherings },
     ...(MARKET_ENABLED ? [{ href: `/${locale}/market`, label: dict.nav.market }] : []),
-    { href: `/${locale}/battle`, label: dict.nav.battle },
   ];
 
   const isActive = (href: string, exact?: boolean) =>

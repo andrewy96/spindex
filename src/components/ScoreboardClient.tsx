@@ -250,7 +250,7 @@ export default function ScoreboardClient({ locale, dict }: { locale: Locale; dic
         <p className="mb-3 text-center text-xs text-accent-2 sm:mb-4">
           ⚔ {name1} vs {name2} ·{" "}
           {challenge.format === "team" ? dict.battle.teamEvent : dict.battle.singleBattle} ·
-          ★{challenge.wager} · {firstToLabel}
+          {challenge.wager} pts · {firstToLabel}
         </p>
       )}
 

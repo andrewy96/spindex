@@ -113,7 +113,7 @@ export function ProfileHeader({
         </div>
       </div>
       <div className="mt-4 grid grid-cols-4 gap-2">
-        <StatCard label={dict.battle.starsBalance} value={`★${p.stars}`} accent />
+        <StatCard label={dict.battle.starsBalance} value={`${p.stars} pts`} accent />
         <StatCard label={dict.battle.wins} value={p.wins} />
         <StatCard label={dict.battle.losses} value={p.losses} />
         <StatCard label={dict.battle.winRate} value={`${rate}%`} />
@@ -179,7 +179,7 @@ export function MatchRow({
         </span>
         {m.status === "confirmed" && m.stars_moved != null && (
           <span className={`text-xs font-bold ${won ? "text-bal" : "text-ink-dim"}`}>
-            {won ? `+${m.stars_moved}★` : `−${m.stars_moved}★`}
+            {won ? `+${m.stars_moved} pts` : `-${m.stars_moved} pts`}
           </span>
         )}
         {m.status === "pending" && (

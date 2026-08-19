@@ -1,8 +1,38 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDict, isLocale, Locale, locales } from "@/i18n";
 import BattleBoardClient from "@/components/BattleBoardClient";
+import BattleRecordsClient from "@/components/BattleRecordsClient";
+import PlayerRankingsClient from "@/components/PlayerRankingsClient";
+import ScoreboardClient from "@/components/ScoreboardClient";
+
+type SearchParams = { [key: string]: string | string[] | undefined };
+type PointChallengeTab = "challenges" | "rankings" | "records" | "scoreboard";
+
+function firstValue(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
+function resolveTab(searchParams: SearchParams): PointChallengeTab {
+  const rawTab = firstValue(searchParams.tab);
+  if (rawTab === "rankings" || rawTab === "records" || rawTab === "scoreboard") return rawTab;
+  if (firstValue(searchParams.c)) return "scoreboard";
+  return "challenges";
+}
+
+function pointChallengeHref(locale: Locale, tab: PointChallengeTab, searchParams: SearchParams): string {
+  const params = new URLSearchParams();
+  if (tab !== "challenges") params.set("tab", tab);
+  if (tab === "scoreboard") {
+    const challengeId = firstValue(searchParams.c);
+    if (challengeId) params.set("c", challengeId);
+  }
+  const query = params.toString();
+  return `/${locale}/battle${query ? `?${query}` : ""}`;
+}
 
 export function generateStaticParams() {
   return locales.map((locale) => ({ locale }));
@@ -21,13 +51,23 @@ export async function generateMetadata({
 
 export default async function BattlePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<SearchParams>;
 }) {
   const { locale: raw } = await params;
   if (!isLocale(raw)) notFound();
   const locale = raw as Locale;
   const dict = getDict(locale);
+  const sp = await searchParams;
+  const tab = resolveTab(sp);
+  const tabs: { key: PointChallengeTab; label: string }[] = [
+    { key: "challenges", label: dict.battle.navChallenges },
+    { key: "rankings", label: dict.battle.navRankings },
+    { key: "records", label: dict.battle.navRecords },
+    { key: "scoreboard", label: dict.battle.navScoreboard },
+  ];
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
@@ -35,21 +75,50 @@ export default async function BattlePage({
         <h1 className="font-display text-3xl font-bold tracking-wide">{dict.battle.title}</h1>
         <div className="flex flex-wrap gap-2">
           <Link
-            href={`/${locale}/battle/records`}
+            href={`/${locale}/battle?tab=records`}
             className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:border-accent/60"
           >
             {dict.battle.records}
           </Link>
           <Link
-            href={`/${locale}/battle/score`}
+            href={`/${locale}/battle?tab=scoreboard`}
             className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-accent-2 transition hover:border-accent-2/60"
           >
-            🧮 {dict.battle.scoreboard}
+            {dict.battle.scoreboard}
           </Link>
         </div>
       </div>
-      <p className="mb-8 text-sm text-ink-dim">{dict.battle.subtitle}</p>
-      <BattleBoardClient locale={locale} dict={dict} />
+      <p className="mb-6 text-sm text-ink-dim">{dict.battle.subtitle}</p>
+
+      <div className="mb-8 flex gap-1 overflow-x-auto border-b border-edge">
+        {tabs.map((item) => (
+          <Link
+            key={item.key}
+            href={pointChallengeHref(locale, item.key, sp)}
+            className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 font-display text-sm font-bold tracking-wide transition ${
+              tab === item.key
+                ? "border-accent text-accent"
+                : "border-transparent text-ink-dim hover:text-ink"
+            }`}
+          >
+            {item.label}
+          </Link>
+        ))}
+      </div>
+
+      {tab === "rankings" ? (
+        <PlayerRankingsClient locale={locale} dict={dict} limit={50} />
+      ) : tab === "records" ? (
+        <div className="mx-auto max-w-4xl">
+          <BattleRecordsClient locale={locale} dict={dict} />
+        </div>
+      ) : tab === "scoreboard" ? (
+        <Suspense fallback={null}>
+          <ScoreboardClient locale={locale} dict={dict} />
+        </Suspense>
+      ) : (
+        <BattleBoardClient locale={locale} dict={dict} />
+      )}
     </div>
   );
 }

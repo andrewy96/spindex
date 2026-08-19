@@ -87,7 +87,7 @@ function RecordRow({ m, locale, dict }: { m: Match; locale: Locale; dict: Dict }
           {formatLabel}
         </span>
         <span className="rounded bg-bal/10 px-2 py-0.5 text-[10px] font-semibold text-bal">
-          ★{moved}
+          {moved} pts
         </span>
         <span className="rounded bg-panel px-2 py-0.5 text-[10px] font-semibold text-ink-dim">
           {dict.battle.firstToPoints.replace("{points}", String(targetScore))}
