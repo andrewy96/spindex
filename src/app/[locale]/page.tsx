@@ -128,7 +128,7 @@ export default async function HomePage({
           fill
           priority
           sizes="100vw"
-          className="absolute inset-0 -z-30 object-cover object-[66%_center] opacity-85 sm:object-contain sm:object-right sm:opacity-100"
+          className="absolute inset-0 -z-30 object-cover object-[66%_center] opacity-85 sm:origin-top-right sm:scale-[1.08] sm:object-contain sm:object-right sm:opacity-100 lg:scale-[1.14] xl:scale-[1.2]"
         />
         <div className="absolute inset-0 -z-20 bg-[linear-gradient(90deg,#030504_0%,rgba(3,5,4,0.96)_30%,rgba(3,5,4,0.62)_53%,rgba(3,5,4,0.1)_100%)]" />
         <div className="absolute inset-0 -z-10 bg-[linear-gradient(180deg,rgba(3,5,4,0.08)_0%,rgba(3,5,4,0.02)_62%,#06080b_100%)]" />
