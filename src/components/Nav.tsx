@@ -18,7 +18,6 @@ function AuthChip({ locale, dict }: { locale: Locale; dict: Dict }) {
         className="flex items-center gap-1.5 rounded-md border border-accent/40 bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent transition hover:bg-accent/20"
       >
         @{profile.handle}
-        <span className="text-bal">{profile.stars} pts</span>
       </Link>
     );
   }

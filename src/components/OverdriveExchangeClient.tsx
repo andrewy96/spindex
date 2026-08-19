@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { Dict, Locale } from "@/i18n";
 import { useAuth } from "@/lib/auth";
@@ -56,24 +57,36 @@ export default function OverdriveExchangeClient({
         detail: dict.exchange.pointToDiamondDetail,
         cost: `${OVERDRIVE_POINT_TO_DIAMOND_COST.toLocaleString("en-MY")} pts`,
         canRedeem: points >= OVERDRIVE_POINT_TO_DIAMOND_COST,
+        image: "/rewards/overdrive-diamond.svg",
+        imageAlt: dict.exchange.diamonds,
+        imageClassName: "object-contain p-4",
       },
       gold_bar: {
         title: dict.exchange.diamondToGold,
         detail: dict.exchange.diamondToGoldDetail,
         cost: `${OVERDRIVE_DIAMOND_TO_GOLD_COST} ${dict.exchange.diamonds}`,
         canRedeem: diamonds >= OVERDRIVE_DIAMOND_TO_GOLD_COST,
+        image: "/rewards/overdrive-gold-bar.svg",
+        imageAlt: dict.exchange.goldBars,
+        imageClassName: "object-contain p-4",
       },
       ux20: {
         title: dict.exchange.ux20,
         detail: dict.exchange.ux20Detail,
         cost: `5 ${dict.exchange.diamonds}`,
         canRedeem: diamonds >= 5,
+        image: "/rewards/ux20.png",
+        imageAlt: dict.exchange.ux20,
+        imageClassName: "object-contain p-1",
       },
       ux00: {
         title: dict.exchange.ux00,
         detail: dict.exchange.ux00Detail,
         cost: `10 ${dict.exchange.diamonds}`,
         canRedeem: diamonds >= 10,
+        image: "/rewards/ux00.jpg",
+        imageAlt: dict.exchange.ux00,
+        imageClassName: "object-contain p-2",
       },
     }),
     [diamonds, dict, points]
@@ -165,11 +178,22 @@ export default function OverdriveExchangeClient({
           const meta = rewards[reward.key];
           return (
             <div key={reward.key} className="panel flex flex-col gap-4 p-4">
-              <div>
-                <div className="font-display text-lg font-bold tracking-wide">
-                  {meta.title}
+              <div className="flex items-start gap-4">
+                <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-md border border-edge bg-bg">
+                  <Image
+                    src={meta.image}
+                    alt={meta.imageAlt}
+                    fill
+                    sizes="96px"
+                    className={meta.imageClassName}
+                  />
                 </div>
-                <p className="mt-1 text-sm text-ink-dim">{meta.detail}</p>
+                <div className="min-w-0">
+                  <div className="font-display text-lg font-bold tracking-wide">
+                    {meta.title}
+                  </div>
+                  <p className="mt-1 text-sm text-ink-dim">{meta.detail}</p>
+                </div>
               </div>
               <div className="mt-auto flex items-center justify-between gap-3">
                 <span className="rounded bg-panel px-2 py-1 font-display text-xs font-bold text-bal">

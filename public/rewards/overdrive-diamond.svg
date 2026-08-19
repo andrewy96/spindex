@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Diamond">
+  <defs>
+    <linearGradient id="diamondTop" x1="22" y1="14" x2="105" y2="108" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8ffff"/>
+      <stop offset="0.34" stop-color="#45e7ff"/>
+      <stop offset="0.68" stop-color="#00f0a8"/>
+      <stop offset="1" stop-color="#058f72"/>
+    </linearGradient>
+    <linearGradient id="diamondFace" x1="36" y1="46" x2="91" y2="118" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#a5fbff"/>
+      <stop offset="1" stop-color="#08a6e8"/>
+    </linearGradient>
+  </defs>
+  <path d="M28 22h72l20 28-56 62L8 50z" fill="#06161b" stroke="#1de7ff" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M28 22h72l20 28H8z" fill="url(#diamondTop)"/>
+  <path d="M8 50h112l-56 62z" fill="url(#diamondFace)"/>
+  <path d="M28 22 42 50l22-28 22 28 14-28M42 50l22 62 22-62M8 50h112" fill="none" stroke="#eaffff" stroke-opacity=".72" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M58 30 44 47h39L69 30z" fill="#ffffff" opacity=".55"/>
+  <path d="M91 59 70 93l39-43z" fill="#ffffff" opacity=".24"/>
+</svg>

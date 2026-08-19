@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Gold bar">
+  <defs>
+    <linearGradient id="goldFace" x1="25" y1="36" x2="104" y2="104" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff3a8"/>
+      <stop offset="0.3" stop-color="#ffbe1b"/>
+      <stop offset="0.68" stop-color="#d98700"/>
+      <stop offset="1" stop-color="#7a3f00"/>
+    </linearGradient>
+    <linearGradient id="goldTop" x1="42" y1="20" x2="90" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fffbe0"/>
+      <stop offset="1" stop-color="#ffd34a"/>
+    </linearGradient>
+  </defs>
+  <path d="M28 50 44 24h40l16 26 18 42H10z" fill="#130f06" stroke="#ffc226" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M44 24h40l16 26H28z" fill="url(#goldTop)"/>
+  <path d="M28 50h72l18 42H10z" fill="url(#goldFace)"/>
+  <path d="M39 57h50l7 18H32z" fill="#ffd86a" opacity=".64"/>
+  <path d="M49 64h31l3 6H46z" fill="#6c3a00" opacity=".42"/>
+  <path d="M28 50h72M44 24l-5 26M84 24l5 26M10 92h108" fill="none" stroke="#fff5c7" stroke-opacity=".66" stroke-width="4" stroke-linecap="round"/>
+</svg>
