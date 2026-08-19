@@ -6,6 +6,8 @@ import { AuthProvider } from "@/lib/auth";
 import { getDict, isLocale, locales, Locale } from "@/i18n";
 import { SITE_URL } from "@/lib/siteUrl";
 
+const shareImage = "/brand/spindex-share-card.png";
+
 export function generateStaticParams() {
   return locales.map((locale) => ({ locale }));
 }
@@ -18,21 +20,36 @@ export async function generateMetadata({
   const { locale } = await params;
   if (!isLocale(locale)) return {};
   const dict = getDict(locale);
+  const title = `${dict.site.name} - ${dict.site.tagline}`;
+  const description = dict.site.description;
   return {
     metadataBase: new URL(SITE_URL),
     title: {
       default: `${dict.site.name} — ${dict.site.tagline}`,
       template: `%s — ${dict.site.name}`,
     },
-    description: dict.site.description,
+    description,
     openGraph: {
-      title: `${dict.site.name} — ${dict.site.tagline}`,
-      description: dict.site.description,
+      title,
+      description,
       siteName: dict.site.name,
       locale: locale === "zh" ? "zh_CN" : "en_MY",
       type: "website",
+      images: [
+        {
+          url: shareImage,
+          width: 1200,
+          height: 630,
+          alt: "SPINDEX Beyblade X platform",
+        },
+      ],
     },
-    twitter: { card: "summary_large_image" },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [shareImage],
+    },
   };
 }
 
