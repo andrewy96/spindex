@@ -16,6 +16,7 @@ import TournamentFormatDesigner, { TournamentFormatSummary } from "@/components/
 import {
   defaultTournamentFormatConfig,
   normalizeTournamentFormatConfig,
+  tournamentGroupStageSettings,
   tournamentFormatConfigForSave,
   TournamentFormatConfig,
 } from "@/lib/tournamentFormat";
@@ -166,6 +167,14 @@ export default function TournamentDetailClient({
   const formatLabel = formats.find((f) => f.key === item.format)?.label ?? item.format;
   const maxPlayersNumber = Number(maxPlayers) || 16;
   const targetScoreNumber = Number(targetScore) || 4;
+  const savedGroupStageSettings =
+    item.format === "group_stage"
+      ? tournamentGroupStageSettings(item.format_config, item.format, item.max_players, item.target_score ?? 4)
+      : null;
+  const groupStageGroupCount = savedGroupStageSettings?.groups ?? 8;
+  const groupStageAdvanceCount = savedGroupStageSettings?.advanceCount ?? 16;
+  const groupStageMinPlayers = savedGroupStageSettings?.minPlayers ?? 16;
+  const poolNumbers = Array.from({ length: groupStageGroupCount }, (_, i) => i + 1);
 
   const changeFormat = (next: TournamentFormat) => {
     setFormat(next);
@@ -546,14 +555,14 @@ export default function TournamentDetailClient({
               <div>
                 <div className="font-display text-sm font-bold tracking-wider text-ink-dim">Pools</div>
                 <p className="mt-1 text-xs text-ink-dim">
-                  Splits joined players into 8 pools and keeps same-club players apart where possible. Safe to
+                  Splits joined players into {groupStageGroupCount} pools and advances {groupStageAdvanceCount} players after round robin. Safe to
                   re-draw after adding more players — anyone already placed (including hand-moved players) stays put.
                 </p>
               </div>
               {isHost && (
                 <button
                   onClick={drawPools}
-                  disabled={rosterBusy}
+                  disabled={rosterBusy || joined.length < groupStageMinPlayers}
                   className="clip-x shrink-0 bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
                 >
                   Draw pools
@@ -562,7 +571,7 @@ export default function TournamentDetailClient({
             </div>
             {joined.some((p) => p.pool_no != null) ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {Array.from({ length: 8 }, (_, i) => i + 1).map((poolNo) => {
+                {poolNumbers.map((poolNo) => {
                   const members = joined.filter((p) => p.pool_no === poolNo);
                   if (members.length === 0) return null;
                   return (
@@ -581,7 +590,7 @@ export default function TournamentDetailClient({
                                 disabled={rosterBusy}
                                 className="shrink-0 rounded border border-edge bg-panel-2 px-1 py-0.5 text-[10px] outline-none focus:border-accent disabled:opacity-50"
                               >
-                                {Array.from({ length: 8 }, (_, i) => i + 1).map((n) => (
+                                {poolNumbers.map((n) => (
                                   <option key={n} value={n}>
                                     Pool {n}
                                   </option>
@@ -611,9 +620,9 @@ export default function TournamentDetailClient({
               </div>
             ) : (
               <p className="text-sm text-ink-dim">
-                {joined.length < 16
-                  ? `Need at least 16 joined players to draw pools (${joined.length}/16).`
-                  : 'No pools drawn yet — click "Draw pools" to split the lineup into 8 groups.'}
+                {joined.length < groupStageMinPlayers
+                  ? `Need at least ${groupStageMinPlayers} joined players to draw ${groupStageGroupCount} pools (${joined.length}/${groupStageMinPlayers}).`
+                  : `No pools drawn yet — click "Draw pools" to split the lineup into ${groupStageGroupCount} groups.`}
               </p>
             )}
           </div>

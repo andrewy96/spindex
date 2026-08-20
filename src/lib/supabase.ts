@@ -22,6 +22,12 @@ export interface Profile {
   losses: number;
   /** True for a host-added walk-in with no login (no email/phone, created via add_tournament_walkin). */
   is_walkin: boolean;
+  /** Registered profiles approved by a superadmin to create tournaments. */
+  approved_host: boolean;
+  /** Global BEYLIVE scoring entitlement granted by a superadmin. */
+  beylive_judge: boolean;
+  /** Set by superadmin removal when history requires keeping the profile row. */
+  admin_deleted_at: string | null;
   created_at: string;
 }
 

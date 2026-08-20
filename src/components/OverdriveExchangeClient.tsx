@@ -34,6 +34,10 @@ function fmtDate(iso: string, locale: Locale) {
   }).format(new Date(iso));
 }
 
+function isComingSoonReward(reward: OverdriveRewardKey) {
+  return reward === "ux20" || reward === "ux00";
+}
+
 export default function OverdriveExchangeClient({
   locale,
   dict,
@@ -57,6 +61,7 @@ export default function OverdriveExchangeClient({
         detail: dict.exchange.pointToDiamondDetail,
         cost: `${OVERDRIVE_POINT_TO_DIAMOND_COST.toLocaleString("en-MY")} pts`,
         canRedeem: points >= OVERDRIVE_POINT_TO_DIAMOND_COST,
+        comingSoon: false,
         image: "/rewards/overdrive-diamond.svg",
         imageAlt: dict.exchange.diamonds,
         imageClassName: "object-contain p-4",
@@ -66,6 +71,7 @@ export default function OverdriveExchangeClient({
         detail: dict.exchange.diamondToGoldDetail,
         cost: `${OVERDRIVE_DIAMOND_TO_GOLD_COST} ${dict.exchange.diamonds}`,
         canRedeem: diamonds >= OVERDRIVE_DIAMOND_TO_GOLD_COST,
+        comingSoon: false,
         image: "/rewards/overdrive-gold-bar.svg",
         imageAlt: dict.exchange.goldBars,
         imageClassName: "object-contain p-4",
@@ -74,7 +80,8 @@ export default function OverdriveExchangeClient({
         title: dict.exchange.ux20,
         detail: dict.exchange.ux20Detail,
         cost: `5 ${dict.exchange.diamonds}`,
-        canRedeem: diamonds >= 5,
+        canRedeem: false,
+        comingSoon: true,
         image: "/rewards/ux20.png",
         imageAlt: dict.exchange.ux20,
         imageClassName: "object-contain p-1",
@@ -83,7 +90,8 @@ export default function OverdriveExchangeClient({
         title: dict.exchange.ux00,
         detail: dict.exchange.ux00Detail,
         cost: `10 ${dict.exchange.diamonds}`,
-        canRedeem: diamonds >= 10,
+        canRedeem: false,
+        comingSoon: true,
         image: "/rewards/ux00.jpg",
         imageAlt: dict.exchange.ux00,
         imageClassName: "object-contain p-2",
@@ -130,6 +138,7 @@ export default function OverdriveExchangeClient({
   }
 
   const redeem = async (reward: OverdriveRewardKey) => {
+    if (isComingSoonReward(reward)) return;
     if (!supabase) return;
     setBusy(reward);
     setMessage(null);
@@ -177,15 +186,24 @@ export default function OverdriveExchangeClient({
         {OVERDRIVE_REWARDS.map((reward) => {
           const meta = rewards[reward.key];
           return (
-            <div key={reward.key} className="panel flex flex-col gap-4 p-4">
-              <div className="flex items-start gap-4">
+            <div key={reward.key} className="panel relative flex flex-col gap-4 overflow-hidden p-4">
+              {meta.comingSoon && (
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-bg/35 backdrop-blur-[2px]">
+                  <span className="clip-x border border-accent/50 bg-panel/95 px-4 py-2 font-display text-xs font-black uppercase tracking-wider text-accent">
+                    {dict.exchange.comingSoon}
+                  </span>
+                </div>
+              )}
+              <div className={`flex items-start gap-4 ${meta.comingSoon ? "opacity-55" : ""}`}>
                 <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-md border border-edge bg-bg">
                   <Image
                     src={meta.image}
                     alt={meta.imageAlt}
                     fill
                     sizes="96px"
-                    className={meta.imageClassName}
+                    className={`${meta.imageClassName} ${
+                      meta.comingSoon ? "blur-sm grayscale" : ""
+                    }`}
                   />
                 </div>
                 <div className="min-w-0">
@@ -202,10 +220,14 @@ export default function OverdriveExchangeClient({
                 <button
                   type="button"
                   onClick={() => redeem(reward.key)}
-                  disabled={busy !== null || !meta.canRedeem}
+                  disabled={busy !== null || !meta.canRedeem || meta.comingSoon}
                   className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-45"
                 >
-                  {busy === reward.key ? dict.exchange.redeeming : dict.exchange.redeem}
+                  {meta.comingSoon
+                    ? dict.exchange.comingSoon
+                    : busy === reward.key
+                      ? dict.exchange.redeeming
+                      : dict.exchange.redeem}
                 </button>
               </div>
             </div>

@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireSuperadmin } from "@/lib/adminServer";
+import { deleteAdminManagedUser } from "@/lib/adminUsers";
 import { normalizeMyPhone } from "@/lib/phone";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PROFILE_SELECT =
-  "id,handle,display_name,avatar_url,city,stars,wins,losses,is_walkin,created_at";
+  "id,handle,display_name,avatar_url,city,player_code,approved_host,beylive_judge,admin_deleted_at,stars,wins,losses,is_walkin,created_at";
 const HANDLE_RE = /^[a-zA-Z0-9_]{3,20}$/;
 const BIRTHDAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -101,7 +102,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "walkin_has_no_account" }, { status: 400 });
   }
 
-  const updates: Record<string, string | number | null> = {};
+  const updates: Record<string, string | number | boolean | null> = {};
 
   if ("handle" in body) {
     if (typeof body.handle !== "string") {
@@ -142,6 +143,26 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "invalid_avatar_url" }, { status: 400 });
     }
     updates.avatar_url = avatarUrl || null;
+  }
+
+  if ("beyliveJudge" in body) {
+    if (typeof body.beyliveJudge !== "boolean") {
+      return NextResponse.json({ error: "invalid_beylive_judge" }, { status: 400 });
+    }
+    if (body.beyliveJudge && existingProfile.is_walkin) {
+      return NextResponse.json({ error: "walkin_cannot_login" }, { status: 400 });
+    }
+    updates.beylive_judge = body.beyliveJudge;
+  }
+
+  if ("approvedHost" in body) {
+    if (typeof body.approvedHost !== "boolean") {
+      return NextResponse.json({ error: "invalid_approved_host" }, { status: 400 });
+    }
+    if (body.approvedHost && existingProfile.is_walkin) {
+      return NextResponse.json({ error: "walkin_cannot_login" }, { status: 400 });
+    }
+    updates.approved_host = body.approvedHost;
   }
 
   const password = "password" in body ? body.password : undefined;
@@ -236,7 +257,9 @@ export async function PATCH(request: Request, context: RouteContext) {
     "handle" in updates ||
     "display_name" in updates ||
     "city" in updates ||
-    privateUpdates
+    privateUpdates ||
+    "approved_host" in updates ||
+    "beylive_judge" in updates
   ) {
     const payload = await adminUserPayload(auth.admin, targetId);
     authUpdates.user_metadata = {
@@ -249,10 +272,14 @@ export async function PATCH(request: Request, context: RouteContext) {
           ? privateUpdates.birthday
           : payload?.birthday,
       age: privateUpdates && "age" in privateUpdates ? privateUpdates.age : payload?.age,
+      approved_host:
+        "approved_host" in updates ? Boolean(updates.approved_host) : payload?.approved_host,
+      beylive_judge:
+        "beylive_judge" in updates ? Boolean(updates.beylive_judge) : payload?.beylive_judge,
     };
   }
 
-  if (Object.keys(authUpdates).length > 0) {
+  if (!existingProfile.is_walkin && Object.keys(authUpdates).length > 0) {
     const { error } = await auth.admin.auth.admin.updateUserById(targetId, authUpdates);
     if (error) {
       return NextResponse.json({ error: "auth_update_failed" }, { status: 400 });
@@ -280,27 +307,10 @@ export async function DELETE(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "cannot_delete_self" }, { status: 400 });
   }
 
-  const hardDelete = await auth.admin.auth.admin.deleteUser(targetId);
-  if (!hardDelete.error) {
-    return NextResponse.json({ deleted: true, mode: "hard" });
+  const deleted = await deleteAdminManagedUser(auth.admin, targetId);
+  if (!deleted.deleted) {
+    return NextResponse.json({ error: deleted.error ?? "delete_failed" }, { status: 400 });
   }
 
-  const softDelete = await auth.admin.auth.admin.deleteUser(targetId, true);
-  if (softDelete.error) {
-    return NextResponse.json({ error: "delete_failed" }, { status: 400 });
-  }
-
-  await auth.admin.from("profile_private").delete().eq("id", targetId);
-  await auth.admin
-    .from("profiles")
-    .update({
-      handle: `deleted_${targetId.replace(/-/g, "").slice(0, 12)}`,
-      display_name: "Deleted user",
-      avatar_url: null,
-      city: null,
-      stars: 0,
-    })
-    .eq("id", targetId);
-
-  return NextResponse.json({ deleted: true, mode: "soft" });
+  return NextResponse.json(deleted);
 }

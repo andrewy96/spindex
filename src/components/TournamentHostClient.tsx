@@ -24,6 +24,12 @@ const inputCls =
 const TOURNAMENT_SELECT =
   "*, host_profile:profiles!tournaments_host_fkey(*), players:tournament_players(*, profile:profiles!tournament_players_user_id_fkey(*))";
 
+type FormatOption = {
+  key: TournamentFormat;
+  label: string;
+  desc: string;
+};
+
 function fmtWhen(iso: string, locale: Locale) {
   return new Date(iso).toLocaleString(locale === "zh" ? "zh-CN" : "en-MY", {
     dateStyle: "medium",
@@ -38,6 +44,101 @@ function isPast(item: CommunityTournament) {
   return new Date(item.starts_at).getTime() < Date.now();
 }
 
+function HostGuidePanel({
+  t,
+  formats,
+}: {
+  t: Dict["tournaments"];
+  formats: FormatOption[];
+}) {
+  const setupGuides = [
+    { title: t.hostGuideBasicsTitle, body: t.hostGuideBasicsBody },
+    { title: t.hostGuideScoringTitle, body: t.hostGuideScoringBody },
+    { title: t.hostGuideFormatTitle, body: t.hostGuideFormatBody },
+    { title: t.hostGuideCustomizeTitle, body: t.hostGuideCustomizeBody },
+  ];
+  const fieldGuides = [
+    { label: t.hostName, body: t.hostFieldNameHelp },
+    { label: t.hostCity, body: t.hostFieldCityHelp },
+    { label: t.hostVenue, body: t.hostFieldVenueHelp },
+    { label: t.hostStartsAt, body: t.hostFieldStartsAtHelp },
+    { label: t.hostMaxPlayers, body: t.hostFieldMaxPlayersHelp },
+    { label: t.hostTargetScore, body: t.hostFieldTargetScoreHelp },
+    { label: t.hostFormat, body: t.hostFieldFormatHelp },
+    { label: t.hostNote, body: t.hostFieldNoteHelp },
+  ];
+  const customizeGuides = [
+    { label: t.formatStageType, body: t.hostCustomizeStageTypeHelp },
+    { label: t.formatEntrants, body: t.hostCustomizeEntrantsHelp },
+    { label: t.formatAdvance, body: t.hostCustomizeAdvanceHelp },
+    { label: `${t.formatGroups} / ${t.formatRounds}`, body: t.hostCustomizeGroupsRoundsHelp },
+    { label: t.formatTargetScore, body: t.hostCustomizeTargetScoreHelp },
+    { label: t.formatSeeding, body: t.hostCustomizeSeedingHelp },
+  ];
+
+  return (
+    <div className="sm:col-span-2 rounded-md border border-edge bg-bg/80 p-4">
+      <div className="font-display text-xs font-bold uppercase tracking-[0.22em] text-accent">
+        {t.hostGuideTitle}
+      </div>
+      <p className="mt-2 max-w-4xl text-sm leading-relaxed text-ink-dim">{t.hostGuideIntro}</p>
+
+      <div className="mt-4 grid gap-2 md:grid-cols-2">
+        {setupGuides.map((item) => (
+          <div key={item.title} className="rounded-md border border-edge bg-panel px-3 py-2">
+            <div className="text-xs font-semibold text-ink">{item.title}</div>
+            <div className="mt-1 text-xs leading-relaxed text-ink-dim">{item.body}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 border-t border-edge pt-4">
+        <div className="font-display text-xs font-bold uppercase tracking-wider text-accent-2">
+          {t.hostGuideFieldTitle}
+        </div>
+        <dl className="mt-2 grid gap-2 sm:grid-cols-2">
+          {fieldGuides.map((item) => (
+            <div key={item.label} className="rounded bg-panel px-3 py-2">
+              <dt className="text-[10px] font-bold uppercase tracking-wide text-ink">{item.label}</dt>
+              <dd className="mt-1 text-xs leading-relaxed text-ink-dim">{item.body}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      <details className="mt-4 rounded-md border border-edge bg-panel px-3 py-2">
+        <summary className="cursor-pointer font-display text-xs font-bold uppercase tracking-wider text-accent">
+          {t.hostFormatGuideTitle}
+        </summary>
+        <p className="mt-2 text-xs leading-relaxed text-ink-dim">{t.hostFormatGuideIntro}</p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {formats.map((format) => (
+            <div key={format.key} className="rounded border border-edge bg-bg px-3 py-2">
+              <div className="text-xs font-semibold text-ink">{format.label}</div>
+              <div className="mt-1 text-xs leading-relaxed text-ink-dim">{format.desc}</div>
+            </div>
+          ))}
+        </div>
+      </details>
+
+      <details className="mt-2 rounded-md border border-edge bg-panel px-3 py-2">
+        <summary className="cursor-pointer font-display text-xs font-bold uppercase tracking-wider text-accent">
+          {t.hostCustomizeReferenceTitle}
+        </summary>
+        <p className="mt-2 text-xs leading-relaxed text-ink-dim">{t.hostCustomizeReferenceBody}</p>
+        <dl className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {customizeGuides.map((item) => (
+            <div key={item.label} className="rounded border border-edge bg-bg px-3 py-2">
+              <dt className="text-[10px] font-bold uppercase tracking-wide text-ink">{item.label}</dt>
+              <dd className="mt-1 text-xs leading-relaxed text-ink-dim">{item.body}</dd>
+            </div>
+          ))}
+        </dl>
+      </details>
+    </div>
+  );
+}
+
 export default function TournamentHostClient({ locale, dict }: { locale: Locale; dict: Dict }) {
   const { enabled, profile } = useAuth();
   const isSuperadmin = useIsSuperadmin();
@@ -45,6 +146,7 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
   const [timeScope, setTimeScope] = useState<"upcoming" | "past">("upcoming");
   const [items, setItems] = useState<CommunityTournament[]>([]);
   const [showPost, setShowPost] = useState(false);
+  const [showHostGuide, setShowHostGuide] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -61,7 +163,7 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
   );
   const [note, setNote] = useState("");
 
-  const formats = useMemo(
+  const formats = useMemo<FormatOption[]>(
     () =>
       [
         { key: "single_elimination", label: t.hostFormatSingle, desc: t.hostFormatSingleDesc },
@@ -100,6 +202,10 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
   const visible = timeScope === "upcoming" ? upcoming : past;
   const maxPlayersNumber = Number(maxPlayers) || 16;
   const targetScoreNumber = Number(targetScore) || 4;
+  const canHost =
+    !!profile &&
+    (isSuperadmin ||
+      (!!profile.approved_host && !profile.is_walkin && !profile.admin_deleted_at));
 
   const changeFormat = (next: TournamentFormat) => {
     setFormat(next);
@@ -138,7 +244,7 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
 
   const post = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supabase || !profile || !isSuperadmin) {
+    if (!supabase || !profile || !canHost) {
       setError("Only approved hosts can create tournaments.");
       return;
     }
@@ -244,9 +350,12 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
               </button>
             ))}
           </div>
-          {profile && isSuperadmin ? (
+          {profile && canHost ? (
             <button
-              onClick={() => setShowPost(!showPost)}
+              onClick={() => {
+                setShowPost(!showPost);
+                setShowHostGuide(false);
+              }}
               className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110"
             >
               + {t.hostCta}
@@ -266,11 +375,23 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
         </div>
       </div>
 
-      {showPost && profile && isSuperadmin && (
+      {showPost && profile && canHost && (
         <form onSubmit={post} className="panel mb-6 grid gap-3 p-5 sm:grid-cols-2">
-          <div className="sm:col-span-2 font-display text-sm font-bold tracking-wider">
-            {t.hostFormTitle}
+          <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="font-display text-sm font-bold tracking-wider">{t.hostFormTitle}</div>
+              <div className="mt-1 text-xs text-ink-dim">{t.hostFormIntro}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowHostGuide((current) => !current)}
+              aria-expanded={showHostGuide}
+              className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-[10px] font-bold tracking-wider text-accent transition hover:bg-accent/20"
+            >
+              {showHostGuide ? t.hostGuideHide : t.hostGuideShow}
+            </button>
           </div>
+          {showHostGuide && <HostGuidePanel t={t} formats={formats} />}
           <div className="sm:col-span-2">
             <label className="mb-1 block text-xs text-ink-dim">{t.hostName}</label>
             <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} maxLength={100} required />

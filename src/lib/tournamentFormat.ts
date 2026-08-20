@@ -42,6 +42,12 @@ export interface TournamentFormatConfig {
   stages: TournamentFormatStage[];
 }
 
+export interface TournamentGroupStageSettings {
+  groups: number;
+  advanceCount: number;
+  minPlayers: number;
+}
+
 const FORMATS: TournamentTemplateFormat[] = [
   "single_elimination",
   "double_elimination",
@@ -203,7 +209,7 @@ function normalizeStage(value: unknown, index: number, maxPlayers: number, targe
     name: typeof source.name === "string" && source.name.trim() ? source.name.trim().slice(0, 48) : fallback.name,
     type: asStageType(source.type, fallback.type),
     entrants: clampInt(source.entrants, fallback.entrants, 2, 256),
-    groups: source.groups == null ? undefined : clampInt(source.groups, 2, 2, 32),
+    groups: source.groups == null ? undefined : clampInt(source.groups, 2, 2, 8),
     rounds: source.rounds == null ? undefined : clampInt(source.rounds, 1, 1, 16),
     advanceCount: clampInt(source.advanceCount, fallback.advanceCount, 1, 256),
     targetScore: clampInt(source.targetScore, fallback.targetScore, 1, 30),
@@ -248,6 +254,34 @@ export function tournamentFormatConfigForSave(
   return normalized.enabled
     ? { ...normalized, template: format }
     : { version: 1, enabled: false, template: format, stages: [] };
+}
+
+export function tournamentGroupStageSettings(
+  value: unknown,
+  format: TournamentTemplateFormat,
+  maxPlayers: number,
+  targetScore = 4,
+): TournamentGroupStageSettings {
+  const players = clampInt(maxPlayers, 16, 2, 256);
+  const defaultGroups = Math.min(8, Math.max(2, Math.ceil(players / 4)));
+  const defaultTopCut = players >= 32 ? 16 : players >= 16 ? 8 : players >= 8 ? 4 : 2;
+  const config = normalizeTournamentFormatConfig(value, format, players, targetScore);
+  const groupStage = config.stages.find((stage) => stage.type === "group") ?? config.stages[0];
+  const maxGroups = Math.min(8, Math.max(2, Math.floor(players / 2)));
+  const groups = Math.min(maxGroups, clampInt(groupStage?.groups, defaultGroups, 2, 8));
+  const advanceCount = Math.min(
+    players,
+    Math.max(
+      groups,
+      clampInt(groupStage?.advanceCount, Math.min(16, Math.max(2, defaultTopCut)), 1, 256),
+    ),
+  );
+
+  return {
+    groups,
+    advanceCount,
+    minPlayers: Math.min(players, groups * 2),
+  };
 }
 
 export function tournamentFormatStageSummary(stage: TournamentFormatStage) {

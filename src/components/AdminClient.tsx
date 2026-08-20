@@ -14,6 +14,10 @@ interface AdminUser {
   display_name: string;
   avatar_url: string | null;
   city: string | null;
+  player_code: string | null;
+  approved_host: boolean;
+  beylive_judge: boolean;
+  admin_deleted_at: string | null;
   phone: string;
   gender: "male" | "female" | null;
   birthday: string | null;
@@ -26,6 +30,8 @@ interface AdminUser {
 }
 
 type AdminUserScope = "registered" | "walkins" | "all";
+type ArchiveFilter = "active" | "archived" | "all";
+const ROW_LIMITS = [30, 60, 100, 200, 1000] as const;
 
 interface ProfileForm {
   handle: string;
@@ -35,6 +41,8 @@ interface ProfileForm {
   avatarUrl: string;
   gender: "" | "male" | "female";
   birthday: string;
+  approvedHost: boolean;
+  beyliveJudge: boolean;
 }
 
 function fmtDate(iso: string, locale: Locale) {
@@ -48,7 +56,11 @@ function fmtDate(iso: string, locale: Locale) {
 export default function AdminClient({ locale, dict }: { locale: Locale; dict: Dict }) {
   const { enabled, loading, session, profile, refreshProfile } = useAuth();
   const [query, setQuery] = useState("");
+  const [submittedQuery, setSubmittedQuery] = useState("");
   const [scope, setScope] = useState<AdminUserScope>("registered");
+  const [archiveFilter, setArchiveFilter] = useState<ArchiveFilter>("active");
+  const [rowLimit, setRowLimit] = useState<(typeof ROW_LIMITS)[number]>(100);
+  const [totalUsers, setTotalUsers] = useState(0);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "forbidden" | "error">(
@@ -60,6 +72,7 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
   const [profileForms, setProfileForms] = useState<Record<string, ProfileForm>>({});
   const [passwords, setPasswords] = useState<Record<string, string>>({});
   const [resets, setResets] = useState<ResetRequest[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
   const authHeaders = useCallback(() => {
     if (!session) return null;
@@ -67,7 +80,12 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
   }, [session]);
 
   const loadUsers = useCallback(
-    async (q: string, selectedScope: AdminUserScope) => {
+    async (
+      q: string,
+      selectedScope: AdminUserScope,
+      selectedArchiveFilter: ArchiveFilter,
+      selectedRowLimit: (typeof ROW_LIMITS)[number]
+    ) => {
       const headers = authHeaders();
       if (!headers) return;
       setStatus("loading");
@@ -75,6 +93,8 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
       const params = new URLSearchParams({
         q: q.trim(),
         scope: selectedScope,
+        status: selectedArchiveFilter,
+        limit: String(selectedRowLimit),
       });
       const res = await fetch(`/api/admin/users?${params.toString()}`, { headers });
       if (res.status === 403) {
@@ -86,8 +106,9 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
         setMessage(dict.admin.error);
         return;
       }
-      const data = (await res.json()) as { users: AdminUser[] };
+      const data = (await res.json()) as { users: AdminUser[]; total?: number };
       setUsers(data.users);
+      setTotalUsers(data.total ?? data.users.length);
       setPointEdits(
         Object.fromEntries(data.users.map((user) => [user.id, String(user.stars)]))
       );
@@ -103,10 +124,13 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
               avatarUrl: user.avatar_url ?? "",
               gender: user.gender ?? "",
               birthday: user.birthday ?? "",
+              approvedHost: !!user.approved_host,
+              beyliveJudge: !!user.beylive_judge,
             },
           ])
         )
       );
+      setSelectedIds(new Set());
       setStatus("ready");
     },
     [authHeaders, dict.admin.error]
@@ -123,9 +147,9 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
 
   useEffect(() => {
     if (session) {
-      loadUsers("", "registered");
+      loadUsers(submittedQuery, scope, archiveFilter, rowLimit);
     }
-  }, [loadUsers, session]);
+  }, [archiveFilter, loadUsers, rowLimit, scope, session, submittedQuery]);
 
   useEffect(() => {
     if (session) loadResets();
@@ -157,7 +181,7 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
 
   const search = (e: FormEvent) => {
     e.preventDefault();
-    loadUsers(query, scope);
+    setSubmittedQuery(query);
   };
 
   const adjustPoints = async (user: AdminUser, delta: number) => {
@@ -223,12 +247,18 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
         avatarUrl: user.avatar_url ?? "",
         gender: user.gender ?? "",
         birthday: user.birthday ?? "",
+        approvedHost: !!user.approved_host,
+        beyliveJudge: !!user.beylive_judge,
       },
     }));
     if (profile?.id === user.id) refreshProfile();
   };
 
-  const updateProfileForm = (id: string, field: keyof ProfileForm, value: string) => {
+  const updateProfileForm = (
+    id: string,
+    field: Exclude<keyof ProfileForm, "approvedHost" | "beyliveJudge">,
+    value: string
+  ) => {
     setProfileForms((current) => ({
       ...current,
       [id]: {
@@ -239,6 +269,30 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
         avatarUrl: current[id]?.avatarUrl ?? "",
         gender: current[id]?.gender ?? "",
         birthday: current[id]?.birthday ?? "",
+        approvedHost: current[id]?.approvedHost ?? false,
+        beyliveJudge: current[id]?.beyliveJudge ?? false,
+        [field]: value,
+      },
+    }));
+  };
+
+  const updatePermissionForm = (
+    id: string,
+    field: "approvedHost" | "beyliveJudge",
+    value: boolean
+  ) => {
+    setProfileForms((current) => ({
+      ...current,
+      [id]: {
+        handle: current[id]?.handle ?? "",
+        phone: current[id]?.phone ?? "",
+        displayName: current[id]?.displayName ?? "",
+        city: current[id]?.city ?? "",
+        avatarUrl: current[id]?.avatarUrl ?? "",
+        gender: current[id]?.gender ?? "",
+        birthday: current[id]?.birthday ?? "",
+        approvedHost: current[id]?.approvedHost ?? false,
+        beyliveJudge: current[id]?.beyliveJudge ?? false,
         [field]: value,
       },
     }));
@@ -261,6 +315,8 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
         avatarUrl: form.avatarUrl.trim() || null,
         gender: form.gender || null,
         birthday: form.birthday || null,
+        approvedHost: !user.is_walkin && form.approvedHost,
+        beyliveJudge: !user.is_walkin && form.beyliveJudge,
       }),
     });
     setBusy(null);
@@ -277,6 +333,10 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
     const headers = authHeaders();
     const password = passwords[user.id] ?? "";
     if (!headers) return;
+    if (user.is_walkin) {
+      setMessage("Walk-ins do not have login passwords.");
+      return;
+    }
     if (password.length < 8) {
       setMessage(dict.auth.passwordMin);
       return;
@@ -302,6 +362,7 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
   const deleteUser = async (user: AdminUser) => {
     const headers = authHeaders();
     if (!headers) return;
+    if (user.admin_deleted_at) return;
     if (profile?.id === user.id) {
       setMessage(dict.admin.cannotDeleteSelf);
       return;
@@ -321,12 +382,106 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
     });
     setBusy(null);
     if (!res.ok) {
-      setMessage(dict.admin.error);
+      const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+      setMessage((payload?.error ?? dict.admin.error).replace(/_/g, " "));
       return;
     }
     setUsers((current) => current.filter((u) => u.id !== user.id));
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      next.delete(user.id);
+      return next;
+    });
     setMessage(dict.admin.userDeleted);
   };
+
+  const toggleSelected = (id: string, checked: boolean) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const setVisibleSelected = (checked: boolean) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      users.forEach((user) => {
+        if (profile?.id === user.id || user.admin_deleted_at) return;
+        if (checked) next.add(user.id);
+        else next.delete(user.id);
+      });
+      return next;
+    });
+  };
+
+  const deleteSelectedUsers = async () => {
+    const headers = authHeaders();
+    if (!headers) return;
+    const targets = users.filter(
+      (user) => selectedIds.has(user.id) && profile?.id !== user.id && !user.admin_deleted_at
+    );
+    if (targets.length === 0) return;
+    const ok = window.confirm(
+      `Remove ${targets.length} selected profile${targets.length === 1 ? "" : "s"}? This cannot be undone for profiles without battle history.`
+    );
+    if (!ok) return;
+
+    setBusy("bulk:delete");
+    setMessage(null);
+    const deletedIds: string[] = [];
+    const failedIds: string[] = [];
+    const failed: { id: string; error: string }[] = [];
+    const targetIds = targets.map((user) => user.id);
+    for (let start = 0; start < targetIds.length; start += 200) {
+      const res = await fetch("/api/admin/users", {
+        method: "DELETE",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: targetIds.slice(start, start + 200) }),
+      });
+      const data = (await res.json().catch(() => null)) as {
+        deletedIds?: string[];
+        failedIds?: string[];
+        failed?: { id: string; error: string }[];
+        error?: string;
+      } | null;
+      if (!res.ok) {
+        setBusy(null);
+        setMessage((data?.error ?? dict.admin.error).replace(/_/g, " "));
+        return;
+      }
+      deletedIds.push(...(data?.deletedIds ?? []));
+      failedIds.push(...(data?.failedIds ?? []));
+      failed.push(...(data?.failed ?? []));
+    }
+    setBusy(null);
+
+    const deleted = new Set(deletedIds);
+    setUsers((current) => current.filter((user) => !deleted.has(user.id)));
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      deleted.forEach((id) => next.delete(id));
+      return next;
+    });
+    const failedCount = failedIds.length;
+    const firstFailure = failed[0]?.error?.replace(/_/g, " ");
+    setMessage(
+      failedCount > 0
+        ? `Removed ${deleted.size}; ${failedCount} could not be removed${
+            firstFailure ? ` (${firstFailure})` : ""
+          }.`
+        : `Removed ${deleted.size} selected profile${deleted.size === 1 ? "" : "s"}.`
+    );
+  };
+
+  const selectableUsers = users.filter((user) => profile?.id !== user.id && !user.admin_deleted_at);
+  const selectedUsers = users.filter(
+    (user) => selectedIds.has(user.id) && profile?.id !== user.id && !user.admin_deleted_at
+  );
+  const selectedCount = selectedUsers.length;
+  const allVisibleSelected =
+    selectableUsers.length > 0 && selectableUsers.every((user) => selectedIds.has(user.id));
 
   if (!enabled) {
     return (
@@ -427,7 +582,7 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
             {dict.admin.search}
           </button>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {(
             [
               ["registered", dict.admin.scopeRegistered],
@@ -438,10 +593,7 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
             <button
               key={key}
               type="button"
-              onClick={() => {
-                setScope(key);
-                loadUsers(query, key);
-              }}
+              onClick={() => setScope(key)}
               className={`rounded-md border px-3 py-1.5 font-display text-[11px] font-bold tracking-wider transition ${
                 scope === key
                   ? "border-accent bg-accent/10 text-accent"
@@ -451,8 +603,63 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
               {label}
             </button>
           ))}
+          <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+            <select
+              value={archiveFilter}
+              onChange={(event) => setArchiveFilter(event.target.value as ArchiveFilter)}
+              className="rounded-md border border-edge bg-panel px-3 py-1.5 font-display text-[11px] font-bold tracking-wider text-ink-dim outline-none transition focus:border-accent"
+              aria-label="Archive filter"
+            >
+              <option value="active">Active only</option>
+              <option value="archived">Archived only</option>
+              <option value="all">Active + archived</option>
+            </select>
+            <select
+              value={rowLimit}
+              onChange={(event) =>
+                setRowLimit(Number(event.target.value) as (typeof ROW_LIMITS)[number])
+              }
+              className="rounded-md border border-edge bg-panel px-3 py-1.5 font-display text-[11px] font-bold tracking-wider text-ink-dim outline-none transition focus:border-accent"
+              aria-label="Rows shown"
+            >
+              {ROW_LIMITS.map((limit) => (
+                <option key={limit} value={limit}>
+                  {limit} rows
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-ink-dim">
+              Showing {users.length}
+              {totalUsers > users.length ? ` of ${totalUsers}` : ""}
+            </span>
+          </div>
         </div>
       </form>
+
+      {users.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-edge bg-panel px-4 py-3">
+          <label className="flex items-center gap-2 text-sm font-semibold text-ink">
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={(event) => setVisibleSelected(event.target.checked)}
+              className="h-4 w-4 accent-accent"
+            />
+            Select visible ({selectableUsers.length})
+          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs text-ink-dim">{selectedCount} selected</span>
+            <button
+              type="button"
+              onClick={deleteSelectedUsers}
+              disabled={busy === "bulk:delete" || selectedCount === 0}
+              className="clip-x border border-atk/50 bg-atk/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-atk transition enabled:hover:bg-atk enabled:hover:text-bg disabled:opacity-50"
+            >
+              {busy === "bulk:delete" ? "Removing..." : "Delete selected"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {message && (
         <p
@@ -464,7 +671,8 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
               dict.admin.userDeleted,
               dict.admin.resetDismissed,
             ].includes(message) ||
-            message.startsWith(dict.admin.resetIssued.split("{code}")[0])
+            message.startsWith(dict.admin.resetIssued.split("{code}")[0]) ||
+            (message.startsWith("Removed ") && !message.includes("could not"))
               ? "text-accent"
               : "text-atk"
           }`}
@@ -496,6 +704,8 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
               avatarUrl: user.avatar_url ?? "",
               gender: user.gender ?? "",
               birthday: user.birthday ?? "",
+              approvedHost: !!user.approved_host,
+              beyliveJudge: !!user.beylive_judge,
             };
             const rowBusy = !!busy?.startsWith(`${user.id}:`);
             const userMeta = [
@@ -506,6 +716,16 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
             return (
               <div key={user.id} className="panel p-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                  <label className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-edge bg-panel-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(user.id)}
+                      onChange={(event) => toggleSelected(user.id, event.target.checked)}
+                      disabled={profile?.id === user.id || !!user.admin_deleted_at}
+                      aria-label={`Select @${user.handle}`}
+                      className="h-4 w-4 accent-accent disabled:opacity-40"
+                    />
+                  </label>
                   <div
                     className={`flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-panel font-display text-lg font-black ${
                       user.is_walkin
@@ -551,6 +771,21 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
                       >
                         {user.is_walkin ? dict.admin.walkinBadge : dict.admin.registeredBadge}
                       </span>
+                      {user.approved_host && (
+                        <span className="rounded bg-accent-2/15 px-1.5 py-0.5 font-display text-[9px] font-bold tracking-wider text-accent-2">
+                          TOURNAMENT HOST
+                        </span>
+                      )}
+                      {user.beylive_judge && (
+                        <span className="rounded bg-accent/15 px-1.5 py-0.5 font-display text-[9px] font-bold tracking-wider text-accent">
+                          BEYLIVE JUDGE
+                        </span>
+                      )}
+                      {user.admin_deleted_at && (
+                        <span className="rounded bg-atk/15 px-1.5 py-0.5 font-display text-[9px] font-bold tracking-wider text-atk">
+                          ARCHIVED
+                        </span>
+                      )}
                       <span className="text-xs text-ink-dim">
                         {user.is_walkin
                           ? `${dict.admin.temporaryId} @${user.handle}`
@@ -681,7 +916,9 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
                       ))}
                     </select>
                   </div>
-                  <div className="mt-2 grid gap-2 lg:grid-cols-[10rem_12rem_1fr_auto_auto]">
+                  <div
+                    className="mt-2 grid gap-2 lg:grid-cols-[10rem_12rem_minmax(14rem,1fr)]"
+                  >
                     <select
                       value={form.gender}
                       onChange={(e) =>
@@ -714,20 +951,56 @@ export default function AdminClient({ locale, dict }: { locale: Locale; dict: Di
                       aria-label={dict.admin.avatarUrl}
                       className="rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/60 focus:border-accent"
                     />
-                    <button
-                      onClick={() => saveUserProfile(user)}
-                      disabled={rowBusy}
-                      className="clip-x bg-accent px-5 py-2.5 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
-                    >
-                      {dict.profile.saveProfile}
-                    </button>
-                    <button
-                      onClick={() => deleteUser(user)}
-                      disabled={rowBusy || profile?.id === user.id}
-                      className="clip-x border border-atk/50 bg-atk/10 px-5 py-2.5 font-display text-xs font-bold tracking-wider text-atk transition enabled:hover:bg-atk enabled:hover:text-bg disabled:opacity-50"
-                    >
-                      {user.is_walkin ? dict.admin.deleteWalkin : dict.admin.deleteUser}
-                    </button>
+                  </div>
+                  <div className="mt-2 flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+                    {!user.is_walkin && (
+                      <div className="flex flex-wrap gap-2">
+                        <label className="flex min-h-10 min-w-[9rem] items-center gap-2 whitespace-nowrap rounded-md border border-edge bg-panel px-3 py-2 text-xs font-semibold text-ink-dim">
+                          <input
+                            type="checkbox"
+                            checked={form.approvedHost}
+                            onChange={(event) =>
+                              updatePermissionForm(user.id, "approvedHost", event.target.checked)
+                            }
+                            className="h-4 w-4 accent-accent"
+                          />
+                          Tournament host
+                        </label>
+                        <label className="flex min-h-10 min-w-[8.5rem] items-center gap-2 whitespace-nowrap rounded-md border border-edge bg-panel px-3 py-2 text-xs font-semibold text-ink-dim">
+                          <input
+                            type="checkbox"
+                            checked={form.beyliveJudge}
+                            onChange={(event) =>
+                              updatePermissionForm(user.id, "beyliveJudge", event.target.checked)
+                            }
+                            className="h-4 w-4 accent-accent"
+                          />
+                          BEYLIVE judge
+                        </label>
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-2 xl:ml-auto xl:justify-end">
+                      <button
+                        type="button"
+                        onClick={() => saveUserProfile(user)}
+                        disabled={rowBusy || !!user.admin_deleted_at}
+                        className="clip-x min-h-10 min-w-[7.5rem] bg-accent px-5 py-2.5 text-center font-display text-xs font-bold leading-tight tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+                      >
+                        {dict.profile.saveProfile}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteUser(user)}
+                        disabled={rowBusy || profile?.id === user.id || !!user.admin_deleted_at}
+                        className="clip-x min-h-10 min-w-[7.5rem] border border-atk/50 bg-atk/10 px-5 py-2.5 text-center font-display text-xs font-bold leading-tight tracking-wider text-atk transition enabled:hover:bg-atk enabled:hover:text-bg disabled:opacity-50"
+                      >
+                        {user.admin_deleted_at
+                          ? "Archived"
+                          : user.is_walkin
+                            ? dict.admin.deleteWalkin
+                            : dict.admin.deleteUser}
+                      </button>
+                    </div>
                   </div>
 
                   {!user.is_walkin && (

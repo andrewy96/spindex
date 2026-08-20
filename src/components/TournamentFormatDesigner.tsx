@@ -311,7 +311,7 @@ export default function TournamentFormatDesigner({
                     <input
                       type="number"
                       min={2}
-                      max={32}
+                      max={8}
                       value={stage.groups ?? ""}
                       onChange={(event) => updateStage(stage.id, { groups: event.target.value ? Number(event.target.value) : undefined })}
                       className={rowInputCls}

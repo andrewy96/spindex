@@ -797,7 +797,8 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
   const localPartnerReady = teamMode && matches.length === 0 && isLocalPartnerLive(localPartnerState);
   const localMatches = useMemo(() => localPartnerDisplayMatches(localPartnerState), [localPartnerState]);
   const isHost = !!profile && profile.id === tournament?.host;
-  const canManage = isHost || !!judgeRole;
+  const hasGlobalJudgeAccess = !!profile?.beylive_judge && !profile?.is_walkin;
+  const canManage = isHost || hasGlobalJudgeAccess || !!judgeRole;
   const currentRound = tournament?.current_round ?? 1;
   const showBracketOverview =
     !teamMode && (tournament?.format === "single_elimination" || tournament?.format === "group_stage");
@@ -1169,12 +1170,12 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
         </div>
         {!canManage && (
           <p className="mt-4 rounded-md border border-bal/40 bg-bal/10 px-4 py-3 text-sm text-bal">
-            Only the tournament host or an assigned BEYLIVE judge can score matches right now.
+            Only the tournament host, an assigned BEYLIVE judge, or a Superadmin-approved BEYLIVE judge can score matches right now.
           </p>
         )}
         {canManage && !isHost && (
           <p className="mt-4 rounded-md border border-accent/40 bg-accent/10 px-4 py-3 text-sm text-accent">
-            Judge mode active. Scan both players to open the match scoreboard.
+            {hasGlobalJudgeAccess ? "Global BEYLIVE judge mode active." : "Judge mode active."} Scan both players to open the match scoreboard.
           </p>
         )}
         {error && <p className="mt-4 text-sm font-semibold text-atk">{error}</p>}
