@@ -25,6 +25,8 @@ const inputCls =
   "w-full rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent";
 const TOURNAMENT_SELECT =
   "*, host_profile:profiles!tournaments_host_fkey(*), players:tournament_players(*, profile:profiles!tournament_players_user_id_fkey(*))";
+const WALKIN_CSV_TEMPLATE_PATH = "/templates/tournament-lineup-template.csv";
+const WALKIN_NAME_HEADERS = new Set(["name", "player", "player name", "player_name", "blader", "blader name", "blader_name"]);
 
 function fmtWhen(iso: string, locale: Locale) {
   return new Date(iso).toLocaleString(locale === "zh" ? "zh-CN" : "en-MY", {
@@ -37,6 +39,86 @@ function toDateTimeInput(iso: string) {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function parseCsvRows(text: string) {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let quoted = false;
+
+  const pushRow = () => {
+    row.push(field);
+    if (row.some((cell) => cell.trim())) rows.push(row);
+    row = [];
+    field = "";
+  };
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (quoted) {
+      if (char === '"' && next === '"') {
+        field += '"';
+        i += 1;
+      } else if (char === '"') {
+        quoted = false;
+      } else {
+        field += char;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      quoted = true;
+    } else if (char === ",") {
+      row.push(field);
+      field = "";
+    } else if (char === "\n") {
+      pushRow();
+    } else if (char === "\r") {
+      pushRow();
+      if (next === "\n") i += 1;
+    } else {
+      field += char;
+    }
+  }
+
+  if (field || row.length > 0) pushRow();
+  return rows;
+}
+
+function parseWalkinCsv(text: string) {
+  const rows = parseCsvRows(text)
+    .map((row) => row.map((cell, index) => (index === 0 ? cell.replace(/^\uFEFF/, "") : cell).trim()))
+    .filter((row) => row.some(Boolean));
+  if (rows.length === 0) return { names: [] as string[], skipped: 0, errors: ["CSV is empty."] };
+
+  const firstRow = rows[0].map((cell) => cell.toLowerCase());
+  const nameColumn = firstRow.findIndex((cell) => WALKIN_NAME_HEADERS.has(cell));
+  const dataRows = nameColumn >= 0 ? rows.slice(1) : rows;
+  const nameIndex = nameColumn >= 0 ? nameColumn : 0;
+  const names: string[] = [];
+  const errors: string[] = [];
+  let skipped = 0;
+
+  dataRows.forEach((row, index) => {
+    const name = (row[nameIndex] ?? "").trim();
+    const rowNumber = (nameColumn >= 0 ? index + 2 : index + 1);
+    if (!name) {
+      skipped += 1;
+      return;
+    }
+    if (name.length > 60) {
+      skipped += 1;
+      errors.push(`Row ${rowNumber}: name is over 60 characters.`);
+      return;
+    }
+    names.push(name);
+  });
+
+  return { names, skipped, errors };
 }
 
 export default function TournamentDetailClient({
@@ -60,6 +142,8 @@ export default function TournamentDetailClient({
   const [walkinName, setWalkinName] = useState("");
   const [rosterBusy, setRosterBusy] = useState(false);
   const [rosterError, setRosterError] = useState<string | null>(null);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvImportMessage, setCsvImportMessage] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [city, setCity] = useState("Kuala Lumpur");
@@ -68,6 +152,7 @@ export default function TournamentDetailClient({
   const [format, setFormat] = useState<TournamentFormat>("single_elimination");
   const [maxPlayers, setMaxPlayers] = useState("16");
   const [targetScore, setTargetScore] = useState("4");
+  const [stadiumCount, setStadiumCount] = useState("2");
   const [formatConfig, setFormatConfig] = useState<TournamentFormatConfig>(() =>
     defaultTournamentFormatConfig("single_elimination", 16, 4, false),
   );
@@ -96,6 +181,7 @@ export default function TournamentDetailClient({
     setFormat(next.format);
     setMaxPlayers(String(next.max_players));
     setTargetScore(String(next.target_score ?? 4));
+    setStadiumCount(String(next.beylive_stadium_count ?? 2));
     setFormatConfig(normalizeTournamentFormatConfig(next.format_config, next.format, next.max_players, next.target_score ?? 4));
     setNote(next.note ?? "");
   };
@@ -167,6 +253,7 @@ export default function TournamentDetailClient({
   const formatLabel = formats.find((f) => f.key === item.format)?.label ?? item.format;
   const maxPlayersNumber = Number(maxPlayers) || 16;
   const targetScoreNumber = Number(targetScore) || 4;
+  const stadiumCountNumber = Math.max(1, Math.min(16, Number(stadiumCount) || 2));
   const savedGroupStageSettings =
     item.format === "group_stage"
       ? tournamentGroupStageSettings(item.format_config, item.format, item.max_players, item.target_score ?? 4)
@@ -242,6 +329,7 @@ export default function TournamentDetailClient({
     if (!cleanName) return;
     setRosterBusy(true);
     setRosterError(null);
+    setCsvImportMessage(null);
     const { error: err } = await supabase.rpc("add_tournament_walkin", { tid: item?.id, p_name: cleanName });
     setRosterBusy(false);
     if (err) {
@@ -252,10 +340,81 @@ export default function TournamentDetailClient({
     load();
   };
 
+  const importWalkinCsv = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const fileInput = event.currentTarget;
+    const file = fileInput.files?.[0];
+    fileInput.value = "";
+    if (!file || !supabase || !isHost || !item) return;
+
+    setRosterError(null);
+    setCsvImportMessage(null);
+
+    if (!file.name.toLowerCase().endsWith(".csv") && file.type && !file.type.includes("csv")) {
+      setRosterError("Upload a CSV file.");
+      return;
+    }
+
+    let parsed: ReturnType<typeof parseWalkinCsv>;
+    try {
+      parsed = parseWalkinCsv(await file.text());
+    } catch {
+      setRosterError("Could not read the CSV file.");
+      return;
+    }
+
+    if (parsed.names.length === 0) {
+      setRosterError(parsed.errors[0] ?? "No player names found in the CSV.");
+      return;
+    }
+
+    setRosterBusy(true);
+    setCsvImportMessage(`Importing ${parsed.names.length} player${parsed.names.length === 1 ? "" : "s"}...`);
+    const failures: string[] = [];
+    let imported = 0;
+
+    setCsvImporting(true);
+    try {
+      for (const name of parsed.names) {
+        const { error: err } = await supabase.rpc("add_tournament_walkin", { tid: item.id, p_name: name });
+        if (err) failures.push(`${name}: ${err.message.replace(/_/g, " ")}`);
+        else imported += 1;
+      }
+    } catch {
+      failures.push("CSV import stopped. Try again.");
+    } finally {
+      setRosterBusy(false);
+      setCsvImporting(false);
+    }
+
+    if (imported > 0) await load();
+
+    const skippedText =
+      parsed.skipped > 0
+        ? ` Skipped ${parsed.skipped} blank or invalid row${parsed.skipped === 1 ? "" : "s"}.`
+        : "";
+    setCsvImportMessage(
+      imported > 0
+        ? `Imported ${imported}/${parsed.names.length} player${parsed.names.length === 1 ? "" : "s"}. SPX IDs were assigned automatically.${skippedText}`
+        : null,
+    );
+
+    const validationErrors = parsed.errors.slice(0, 3);
+    const importErrors = failures.slice(0, 3);
+    const hiddenErrors = Math.max(0, parsed.errors.length + failures.length - validationErrors.length - importErrors.length);
+    if (validationErrors.length > 0 || importErrors.length > 0) {
+      setRosterError(
+        [...validationErrors, ...importErrors, hiddenErrors ? `${hiddenErrors} more row${hiddenErrors === 1 ? "" : "s"} failed.` : ""]
+          .filter(Boolean)
+          .join(" "),
+      );
+    }
+  };
+
   const removePlayer = async (userId: string) => {
     if (!supabase || !isHost || !item) return;
     setRosterBusy(true);
     setRosterError(null);
+    setCsvImportMessage(null);
     const { error: err } = await supabase.rpc("remove_tournament_player", { tid: item.id, p_user_id: userId });
     setRosterBusy(false);
     if (err) setRosterError(err.message.replace(/_/g, " "));
@@ -266,6 +425,7 @@ export default function TournamentDetailClient({
     if (!supabase || !isHost || !item) return;
     setRosterBusy(true);
     setRosterError(null);
+    setCsvImportMessage(null);
     const { error: err } = await supabase.rpc("draw_group_stage_pools", { tid: item.id });
     setRosterBusy(false);
     if (err) setRosterError(err.message.replace(/_/g, " "));
@@ -276,6 +436,7 @@ export default function TournamentDetailClient({
     if (!supabase || !isHost || !item) return;
     setRosterBusy(true);
     setRosterError(null);
+    setCsvImportMessage(null);
     const { error: err } = await supabase.rpc("set_tournament_player_pool", {
       tid: item.id,
       p_user_id: userId,
@@ -302,12 +463,13 @@ export default function TournamentDetailClient({
         format_config: tournamentFormatConfigForSave(formatConfig, format, maxPlayersNumber, targetScoreNumber),
         max_players: Number(maxPlayers) || 16,
         target_score: targetScoreNumber,
+        beylive_stadium_count: stadiumCountNumber,
         note: note.trim() || null,
       })
       .eq("id", item.id);
     setBusy(false);
     if (err) {
-      setError(t.hostError);
+      setError(err.message ? err.message.replace(/_/g, " ") : t.hostError);
       return;
     }
     setEditing(false);
@@ -368,6 +530,10 @@ export default function TournamentDetailClient({
           <div>
             <label className="mb-1 block text-xs text-ink-dim">{t.hostTargetScore}</label>
             <input type="number" min={1} max={30} value={targetScore} onChange={(e) => changeTargetScore(e.target.value)} className={inputCls} required />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-ink-dim">{t.hostStadiumCount}</label>
+            <input type="number" min={1} max={16} value={stadiumCount} onChange={(e) => setStadiumCount(e.target.value)} className={inputCls} required />
           </div>
           <div className="sm:col-span-2">
             <label className="mb-1 block text-xs text-ink-dim">{t.hostFormat}</label>
@@ -460,24 +626,54 @@ export default function TournamentDetailClient({
           <div className="panel p-5">
             <div className="mb-3 font-display text-sm font-bold tracking-wider text-ink-dim">{t.lineup}</div>
             {isHost && item.status === "open" && item.format !== "partner" && (
-              <form onSubmit={addWalkin} className="mb-3 flex gap-2">
-                <input
-                  value={walkinName}
-                  onChange={(e) => setWalkinName(e.target.value)}
-                  placeholder="Add player by name (no account needed)"
-                  maxLength={60}
-                  className={`${inputCls} text-xs`}
-                />
-                <button
-                  type="submit"
-                  disabled={rosterBusy || !walkinName.trim()}
-                  className="clip-x shrink-0 bg-accent px-3 py-2 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
-                >
-                  Add
-                </button>
-              </form>
+              <div className="mb-3 grid gap-2">
+                <form onSubmit={addWalkin} className="flex gap-2">
+                  <input
+                    value={walkinName}
+                    onChange={(e) => setWalkinName(e.target.value)}
+                    placeholder="Add player by name (no account needed)"
+                    maxLength={60}
+                    className={`${inputCls} text-xs`}
+                  />
+                  <button
+                    type="submit"
+                    disabled={rosterBusy || !walkinName.trim()}
+                    className="clip-x shrink-0 bg-accent px-3 py-2 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                </form>
+                <div className="rounded-md border border-edge bg-panel/60 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="font-display text-[10px] font-bold uppercase tracking-wider text-accent-2">
+                      CSV mass upload
+                    </div>
+                    <a
+                      href={WALKIN_CSV_TEMPLATE_PATH}
+                      download
+                      className="clip-x border border-edge bg-panel-2 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-accent"
+                    >
+                      Template
+                    </a>
+                  </div>
+                  <label className="mt-2 flex cursor-pointer items-center justify-center rounded-md border border-dashed border-edge bg-bg px-3 py-2 text-xs font-semibold text-ink-dim transition hover:border-accent hover:text-accent">
+                    <input
+                      type="file"
+                      accept=".csv,text/csv"
+                      onChange={importWalkinCsv}
+                      disabled={rosterBusy}
+                      className="sr-only"
+                    />
+                    {csvImporting ? "Importing..." : "Upload CSV"}
+                  </label>
+                  <p className="mt-2 text-[10px] leading-relaxed text-ink-dim">
+                    Use a CSV with a name column. Leave player ID blank; SPX IDs are assigned automatically.
+                  </p>
+                </div>
+              </div>
             )}
             {rosterError && <p className="mb-2 text-xs font-semibold text-atk">{rosterError}</p>}
+            {csvImportMessage && <p className="mb-2 text-xs font-semibold text-accent">{csvImportMessage}</p>}
             {item.format === "partner" ? (
               partnerRoster.length === 0 ? (
                 <p className="text-sm text-ink-dim">{t.noPlayers}</p>

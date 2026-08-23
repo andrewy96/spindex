@@ -12,6 +12,7 @@ import {
   BeyliveTeam,
   CommunityTournament,
   Finish,
+  Profile,
   supabase,
   TournamentPlayer,
   TOURNAMENT_SELECT,
@@ -29,6 +30,8 @@ import {
   beyliveParticipantWon,
   beylivePlayerCode,
   beyliveQrValue,
+  beyliveStadiumCount,
+  beyliveStadiums,
   beyliveTeamCode,
   beyliveTeamMembers,
   beyliveTeamQrValue,
@@ -38,6 +41,7 @@ import {
   isBeyliveByeMatch,
   isBeyliveTeamTournament,
 } from "@/lib/beylive";
+import type { BeyliveStadiumView } from "@/lib/beylive";
 import {
   findLocalPartnerTeamByScan,
   isLocalPartnerLive,
@@ -69,6 +73,13 @@ type ScannedParticipant = {
   id: string;
   code: string;
   name: string;
+};
+
+type StadiumForm = {
+  label: string;
+  streamTitle: string;
+  streamUrl: string;
+  streamEnabled: boolean;
 };
 
 function activeMatchRank(match: BeyliveMatch, currentRound: number) {
@@ -122,14 +133,16 @@ function PlayerRow({
   active: boolean;
 }) {
   return (
-    <div className={`rounded-md border p-3 ${active ? "border-accent bg-accent/10" : "border-edge bg-panel"}`}>
-      <div className="flex items-center justify-between gap-3">
+    <div className={`rounded-md border p-2.5 transition ${active ? "border-accent bg-accent/10 shadow-[0_0_22px_rgba(0,229,143,0.12)]" : "border-edge bg-panel/80"}`}>
+      <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <div className="font-display text-xs font-bold text-accent">{beyliveEventId(player, index)}</div>
-          <div className="truncate text-sm font-semibold">{profileDisplayName(player.profile)}</div>
-          <div className="font-mono text-[11px] text-ink-dim">{beylivePlayerCode(player.profile)}</div>
+          <div className="mb-1 inline-flex rounded border border-accent/40 bg-accent/10 px-2 py-0.5 font-display text-[11px] font-black text-accent">
+            {beyliveEventId(player, index)}
+          </div>
+          <div className="truncate text-sm font-bold text-ink">{profileDisplayName(player.profile)}</div>
+          <div className="font-mono text-[11px] font-semibold text-accent-2">{beylivePlayerCode(player.profile)}</div>
         </div>
-        <QrCodeBadge value={beyliveQrValue(player.profile)} label="BEYLIVE" size={72} />
+        <QrCodeBadge value={beyliveQrValue(player.profile)} label="SCAN" size={58} />
       </div>
     </div>
   );
@@ -143,14 +156,14 @@ function LocalTeamRow({
   active: boolean;
 }) {
   return (
-    <div className={`rounded-md border p-3 ${active ? "border-accent bg-accent/10" : "border-edge bg-panel"}`}>
-      <div className="flex items-center justify-between gap-3">
+    <div className={`rounded-md border p-2.5 transition ${active ? "border-accent bg-accent/10 shadow-[0_0_22px_rgba(0,229,143,0.12)]" : "border-edge bg-panel/80"}`}>
+      <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <div className="font-display text-xs font-bold text-accent">{team.code}</div>
-          <div className="truncate text-sm font-semibold">{team.name}</div>
+          <div className="mb-1 inline-flex rounded border border-accent/40 bg-accent/10 px-2 py-0.5 font-display text-[11px] font-black text-accent">{team.code}</div>
+          <div className="truncate text-sm font-bold text-ink">{team.name}</div>
           <div className="truncate text-[11px] text-ink-dim">{team.members.join(" / ")}</div>
         </div>
-        <QrCodeBadge value={team.code} label="BEYLIVE" size={72} />
+        <QrCodeBadge value={team.code} label="SCAN" size={58} />
       </div>
     </div>
   );
@@ -165,14 +178,14 @@ function TeamRow({
 }) {
   const members = beyliveTeamMembers(team);
   return (
-    <div className={`rounded-md border p-3 ${active ? "border-accent bg-accent/10" : "border-edge bg-panel"}`}>
-      <div className="flex items-center justify-between gap-3">
+    <div className={`rounded-md border p-2.5 transition ${active ? "border-accent bg-accent/10 shadow-[0_0_22px_rgba(0,229,143,0.12)]" : "border-edge bg-panel/80"}`}>
+      <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <div className="font-display text-xs font-bold text-accent">{beyliveTeamCode(team)}</div>
-          <div className="truncate text-sm font-semibold">{team.name}</div>
+          <div className="mb-1 inline-flex rounded border border-accent/40 bg-accent/10 px-2 py-0.5 font-display text-[11px] font-black text-accent">{beyliveTeamCode(team)}</div>
+          <div className="truncate text-sm font-bold text-ink">{team.name}</div>
           <div className="truncate text-[11px] text-ink-dim">{members.join(" / ")}</div>
         </div>
-        <QrCodeBadge value={beyliveTeamQrValue(team)} label="BEYLIVE" size={72} />
+        <QrCodeBadge value={beyliveTeamQrValue(team)} label="SCAN" size={58} />
       </div>
     </div>
   );
@@ -206,7 +219,11 @@ function MatchCard({
   locale,
   id,
   canScore,
+  canEditStadium,
+  stadiums,
   scoreBusy,
+  onStart,
+  onChangeStadium,
   onAddPoint,
   onAddTeamPoint,
   onUndo,
@@ -219,7 +236,11 @@ function MatchCard({
   locale: Locale;
   id: string;
   canScore: boolean;
+  canEditStadium: boolean;
+  stadiums: BeyliveStadiumView[];
   scoreBusy: string | null;
+  onStart: (matchId: string) => void;
+  onChangeStadium: (matchId: string, stadiumNo: number) => void;
   onAddPoint: (matchId: string, userId: string, finish: Finish) => void;
   onAddTeamPoint: (matchId: string, teamId: string, finish: Finish) => void;
   onUndo: (matchId: string) => void;
@@ -227,17 +248,41 @@ function MatchCard({
 }) {
   const matchPlayers = [...(match.players ?? [])].sort((a, b) => a.slot_no - b.slot_no);
   const completed = match.status === "completed";
+  const topScore = matchPlayers.reduce((top, player) => Math.max(top, player.score), 0);
+  const leaderCount = matchPlayers.filter((player) => player.score === topScore).length;
+  const targetReached = topScore >= match.target_score && leaderCount === 1;
   const showScorer = canScore && matchPlayers.length === 2 && !completed;
+  const stadiumNo = match.table_no ?? match.match_no;
+  const assignedStadium = stadiums.find((stadium) => stadium.stadium_no === stadiumNo) ?? null;
+  const selectedStadiumNo = assignedStadium?.stadium_no ?? stadiums[0]?.stadium_no ?? stadiumNo;
+  const liveUrl = assignedStadium?.stream_enabled && assignedStadium.stream_url ? assignedStadium.stream_url : null;
   return (
     <div className="rounded-md border border-edge bg-panel p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs font-semibold text-ink-dim">
-          {matchStageLabel(match, teamMode, groupStage, mainRoundLabels)} · Table {match.table_no ?? match.match_no} · Match {match.match_no}
+          {matchStageLabel(match, teamMode, groupStage, mainRoundLabels)} · {assignedStadium?.label ?? `Stadium ${stadiumNo}`} · Match {match.match_no}
         </div>
         <span className={`text-xs font-bold ${match.status === "live" ? "text-accent" : "text-ink-dim"}`}>
           {match.status}
         </span>
       </div>
+      {canEditStadium && stadiums.length > 0 && !completed && (
+        <label className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-ink-dim">
+          <span>Assign stadium</span>
+          <select
+            value={selectedStadiumNo}
+            onChange={(event) => onChangeStadium(match.id, Number(event.target.value))}
+            disabled={!!scoreBusy}
+            className="rounded border border-edge bg-bg px-2 py-1 text-xs normal-case tracking-normal text-ink outline-none focus:border-accent disabled:opacity-40"
+          >
+            {stadiums.map((stadium) => (
+              <option key={stadium.stadium_no} value={stadium.stadium_no}>
+                {stadium.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
         {matchPlayers.map((player) => {
           const won = beyliveParticipantWon(match, player);
@@ -265,7 +310,7 @@ function MatchCard({
                             ? onAddTeamPoint(match.id, player.team_id, finish.key)
                             : onAddPoint(match.id, player.user_id, finish.key)
                         }
-                        disabled={!!scoreBusy}
+                        disabled={!!scoreBusy || targetReached}
                         className="rounded border px-1 py-1 font-display text-[9px] font-bold tracking-wide transition enabled:hover:brightness-125 disabled:opacity-35"
                         style={{
                           borderColor: `color-mix(in srgb, ${finish.color} 45%, transparent)`,
@@ -286,9 +331,23 @@ function MatchCard({
           );
         })}
       </div>
+      {showScorer && targetReached && (
+        <p className="mt-2 rounded border border-accent/40 bg-accent/10 px-2 py-1.5 text-[10px] font-semibold text-accent">
+          Target reached. Click Complete to publish the winner and advance sync.
+        </p>
+      )}
       <div className="mt-3 flex flex-wrap gap-2">
         {showScorer && (
           <>
+            {match.status === "scheduled" && (
+              <button
+                onClick={() => onStart(match.id)}
+                disabled={!!scoreBusy}
+                className="clip-x border border-accent/50 bg-accent/10 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-accent transition enabled:hover:bg-accent/20 disabled:opacity-40"
+              >
+                Start
+              </button>
+            )}
             <button
               onClick={() => onUndo(match.id)}
               disabled={!!scoreBusy}
@@ -298,7 +357,7 @@ function MatchCard({
             </button>
             <button
               onClick={() => onComplete(match.id)}
-              disabled={!!scoreBusy}
+              disabled={!!scoreBusy || !targetReached}
               className="clip-x border border-accent-2/50 bg-accent-2/10 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-accent-2 transition enabled:hover:bg-accent-2/20 disabled:opacity-40"
             >
               Complete
@@ -311,12 +370,23 @@ function MatchCard({
         >
           Full view
         </Link>
-        <Link
-          href={`/${locale}/tournaments/${id}/live`}
-          className="clip-x border border-edge bg-panel-2 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink"
-        >
-          View live
-        </Link>
+        {liveUrl ? (
+          <a
+            href={liveUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="clip-x border border-accent/50 bg-accent/10 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-accent transition hover:bg-accent/20"
+          >
+            View live
+          </a>
+        ) : (
+          <Link
+            href={`/${locale}/tournaments/${id}/live`}
+            className="clip-x border border-edge bg-panel-2 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink"
+          >
+            View live
+          </Link>
+        )}
       </div>
     </div>
   );
@@ -531,8 +601,11 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
   const [matches, setMatches] = useState<BeyliveMatch[]>([]);
   const [judges, setJudges] = useState<BeyliveJudge[]>([]);
   const [judgeRole, setJudgeRole] = useState<BeyliveJudge["role"] | null>(null);
+  const [currentJudge, setCurrentJudge] = useState<BeyliveJudge | null>(null);
+  const [eligibleJudges, setEligibleJudges] = useState<Profile[]>([]);
   const [judgeLookup, setJudgeLookup] = useState("");
   const [newJudgeRole, setNewJudgeRole] = useState<"judge" | "scorer">("judge");
+  const [newJudgeStadiumNo, setNewJudgeStadiumNo] = useState("1");
   const [judgeBusy, setJudgeBusy] = useState(false);
   const [judgeMessage, setJudgeMessage] = useState<string | null>(null);
   const [judgeError, setJudgeError] = useState<string | null>(null);
@@ -548,14 +621,14 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
   const [streamUrl, setStreamUrl] = useState("");
   const [streamTitle, setStreamTitle] = useState("");
   const [streamEnabled, setStreamEnabled] = useState(false);
-  const [stadium1StreamUrl, setStadium1StreamUrl] = useState("");
-  const [stadium1StreamTitle, setStadium1StreamTitle] = useState("");
-  const [stadium1StreamEnabled, setStadium1StreamEnabled] = useState(false);
-  const [stadium2StreamUrl, setStadium2StreamUrl] = useState("");
-  const [stadium2StreamTitle, setStadium2StreamTitle] = useState("");
-  const [stadium2StreamEnabled, setStadium2StreamEnabled] = useState(false);
+  const [stadiumCountInput, setStadiumCountInput] = useState("2");
+  const [stadiumForms, setStadiumForms] = useState<Record<number, StadiumForm>>({});
   const [streamBusy, setStreamBusy] = useState(false);
   const [streamSaved, setStreamSaved] = useState(false);
+  const [judgeToolsOpen, setJudgeToolsOpen] = useState(false);
+  const [streamToolsOpen, setStreamToolsOpen] = useState(false);
+  const [idToolsOpen, setIdToolsOpen] = useState(false);
+  const [bracketOverviewOpen, setBracketOverviewOpen] = useState(false);
   const partnerCacheKey = useMemo(() => `spindex.partner-battle.${id}`, [id]);
 
   const load = useCallback(async () => {
@@ -589,16 +662,21 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
 
     const loadJudgeRole = async () => {
       if (!supabase || !profile?.id) {
+        setCurrentJudge(null);
         setJudgeRole(null);
         return;
       }
       const { data } = await supabase
         .from("beylive_judges")
-        .select("role")
+        .select(BEYLIVE_JUDGE_SELECT)
         .eq("tournament_id", id)
         .eq("user_id", profile.id)
         .maybeSingle();
-      if (active) setJudgeRole((data?.role as BeyliveJudge["role"] | undefined) ?? null);
+      if (active) {
+        const next = (data as unknown as BeyliveJudge | null) ?? null;
+        setCurrentJudge(next);
+        setJudgeRole(next?.role ?? null);
+      }
     };
 
     loadJudgeRole();
@@ -622,21 +700,25 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     setStreamUrl(tournament.stream_url ?? "");
     setStreamTitle(tournament.stream_title ?? "");
     setStreamEnabled(Boolean(tournament.stream_enabled && tournament.stream_url));
-    setStadium1StreamUrl(tournament.stadium1_stream_url ?? "");
-    setStadium1StreamTitle(tournament.stadium1_stream_title ?? "");
-    setStadium1StreamEnabled(Boolean(tournament.stadium1_stream_enabled && tournament.stadium1_stream_url));
-    setStadium2StreamUrl(tournament.stadium2_stream_url ?? "");
-    setStadium2StreamTitle(tournament.stadium2_stream_title ?? "");
-    setStadium2StreamEnabled(Boolean(tournament.stadium2_stream_enabled && tournament.stadium2_stream_url));
+    setStadiumCountInput(String(beyliveStadiumCount(tournament)));
+    setStadiumForms(
+      Object.fromEntries(
+        beyliveStadiums(tournament).map((stadium) => [
+          stadium.stadium_no,
+          {
+            label: stadium.label,
+            streamTitle: stadium.stream_title ?? "",
+            streamUrl: stadium.stream_url ?? "",
+            streamEnabled: Boolean(stadium.stream_enabled && stadium.stream_url),
+          } satisfies StadiumForm,
+        ]),
+      ),
+    );
     setStreamSaved(false);
   }, [
     tournament?.id,
-    tournament?.stadium1_stream_enabled,
-    tournament?.stadium1_stream_title,
-    tournament?.stadium1_stream_url,
-    tournament?.stadium2_stream_enabled,
-    tournament?.stadium2_stream_title,
-    tournament?.stadium2_stream_url,
+    tournament?.beylive_stadium_count,
+    tournament?.stadiums,
     tournament?.stream_enabled,
     tournament?.stream_title,
     tournament?.stream_url,
@@ -713,7 +795,9 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
       .on("postgres_changes", { event: "*", schema: "public", table: "tournaments", filter: `id=eq.${id}` }, load)
       .on("postgres_changes", { event: "*", schema: "public", table: "beylive_matches", filter: `tournament_id=eq.${id}` }, load)
       .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_players" }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_rounds" }, load)
       .on("postgres_changes", { event: "*", schema: "public", table: "beylive_judges", filter: `tournament_id=eq.${id}` }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_stadiums", filter: `tournament_id=eq.${id}` }, load)
       .subscribe();
     return () => {
       supabase?.removeChannel(channel);
@@ -736,6 +820,9 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
   const podium = useMemo(() => beylivePodium(tournament, matches), [tournament, matches]);
   const [showPodiumModal, setShowPodiumModal] = useState(false);
   const groupPools = useMemo(() => beyliveGroupPools(tournament, matches), [tournament, matches]);
+  const stadiums = useMemo(() => beyliveStadiums(tournament), [tournament]);
+  const stadiumCount = beyliveStadiumCount(tournament);
+  const activeStadiumStreams = stadiums.filter((stadium) => stadium.stream_enabled && stadium.stream_url).length;
   const mainRoundLabels = useMemo(() => beyliveKnockoutRoundLabels(matches), [matches]);
   const poolRoundGroups = useMemo(() => {
     if (!groupStage) return [];
@@ -796,18 +883,72 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
   );
   const localPartnerReady = teamMode && matches.length === 0 && isLocalPartnerLive(localPartnerState);
   const localMatches = useMemo(() => localPartnerDisplayMatches(localPartnerState), [localPartnerState]);
+  const idEntryCount = teamMode
+    ? teams.length > 0
+      ? teams.length
+      : localTeams.length
+    : players.length;
   const isHost = !!profile && profile.id === tournament?.host;
   const hasGlobalJudgeAccess = !!profile?.beylive_judge && !profile?.is_walkin;
   const canManage = isHost || hasGlobalJudgeAccess || !!judgeRole;
+  const currentJudgeStadiumNo = currentJudge?.stadium_no ?? null;
+  const currentJudgeStadium = currentJudgeStadiumNo
+    ? stadiums.find((stadium) => stadium.stadium_no === currentJudgeStadiumNo)
+    : null;
+  const globalJudgeUnassigned = hasGlobalJudgeAccess && currentJudgeStadiumNo == null;
+  const canScoreMatch = (match: BeyliveMatch) =>
+    isHost ||
+    globalJudgeUnassigned ||
+    (currentJudgeStadiumNo == null && !!judgeRole) ||
+    (currentJudgeStadiumNo != null && match.table_no === currentJudgeStadiumNo);
   const currentRound = tournament?.current_round ?? 1;
   const showBracketOverview =
     !teamMode && (tournament?.format === "single_elimination" || tournament?.format === "group_stage");
   const currentRoundMatches = matches.filter((match) => match.round_no === currentRound);
   const displayMatches = useMemo(() => matches.filter((match) => !isBeyliveByeMatch(match)), [matches]);
+  const controlDisplayMatches = useMemo(
+    () =>
+      !isHost && currentJudgeStadiumNo != null
+        ? displayMatches.filter((match) => match.table_no === currentJudgeStadiumNo)
+        : displayMatches,
+    [currentJudgeStadiumNo, displayMatches, isHost],
+  );
   const scanFound = teamMode ? !!scannedTeam || !!scannedLocalTeam || !!scannedPlayerTeam : !!scannedPlayer;
   const canAdvance =
     currentRoundMatches.length > 0 &&
     currentRoundMatches.every((match) => match.status === "completed" || match.status === "cancelled");
+
+  useEffect(() => {
+    let active = true;
+
+    const loadEligibleJudges = async () => {
+      if (!supabase || !isHost || !tournament) {
+        setEligibleJudges([]);
+        return;
+      }
+
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) return;
+
+      const response = await fetch(`/api/beylive/judges?tournamentId=${encodeURIComponent(tournament.id)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = (await response.json().catch(() => null)) as { judges?: Profile[] } | null;
+      if (active && response.ok) setEligibleJudges(payload?.judges ?? []);
+    };
+
+    loadEligibleJudges();
+    return () => {
+      active = false;
+    };
+  }, [isHost, tournament?.id]);
+
+  useEffect(() => {
+    if ((Number(newJudgeStadiumNo) || 1) > stadiumCount) {
+      setNewJudgeStadiumNo(String(stadiumCount));
+    }
+  }, [newJudgeStadiumNo, stadiumCount]);
 
   const scannedParticipantFromValue = (value: string): ScannedParticipant | null => {
     if (teamMode) {
@@ -855,6 +996,10 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
   const openScannedScoreboard = (participants: ScannedParticipant[]) => {
     const match = findMatchByScannedParticipants(matches, participants, currentRound);
     if (match) {
+      if (!canScoreMatch(match)) {
+        setScanMatchMessage("That match is assigned to another stadium.");
+        return;
+      }
       setScanMatchMessage(`Opening ${matchStageLabel(match, teamMode, groupStage || tournament?.format === "single_elimination", mainRoundLabels)} scoreboard.`);
       setScanPair([]);
       router.push(`/${locale}/tournaments/${id}/matches/${match.id}`);
@@ -923,6 +1068,20 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
       return;
     }
     load();
+  };
+
+  const startMatch = (matchId: string) => {
+    const client = supabase;
+    if (!client) return;
+    runScore(`${matchId}:start`, () => client.rpc("start_beylive_match", { mid: matchId }));
+  };
+
+  const changeMatchStadium = (matchId: string, stadiumNo: number) => {
+    const client = supabase;
+    if (!client || !isHost) return;
+    runScore(`${matchId}:stadium`, () =>
+      client.rpc("set_beylive_match_stadium", { mid: matchId, p_stadium_no: stadiumNo }),
+    );
   };
 
   const addPoint = (matchId: string, userId: string, finish: Finish) => {
@@ -1027,6 +1186,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     if (!supabase || !tournament || !isHost) return;
     const lookup = judgeLookup.trim();
     if (!lookup) return;
+    const stadiumNo = Math.max(1, Math.min(stadiumCount, Number(newJudgeStadiumNo) || 1));
 
     setJudgeBusy(true);
     setJudgeError(null);
@@ -1049,6 +1209,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
         tournamentId: tournament.id,
         lookup,
         role: newJudgeRole,
+        stadiumNo,
       }),
     });
     const payload = (await response.json().catch(() => null)) as { error?: string } | null;
@@ -1105,10 +1266,30 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
 
     const nextUrl = streamUrl.trim();
     const nextTitle = streamTitle.trim();
-    const nextStadium1Url = stadium1StreamUrl.trim();
-    const nextStadium1Title = stadium1StreamTitle.trim();
-    const nextStadium2Url = stadium2StreamUrl.trim();
-    const nextStadium2Title = stadium2StreamTitle.trim();
+    const nextStadiumCount = Math.max(1, Math.min(16, Number(stadiumCountInput) || stadiumCount));
+    const stadiumRows = Array.from({ length: nextStadiumCount }, (_, index) => {
+      const stadiumNo = index + 1;
+      const form = stadiumForms[stadiumNo] ?? {
+        label: `Stadium ${stadiumNo}`,
+        streamTitle: "",
+        streamUrl: "",
+        streamEnabled: false,
+      };
+      const cleanUrl = form.streamUrl.trim();
+      const cleanTitle = form.streamTitle.trim();
+      const cleanLabel = form.label.trim() || `Stadium ${stadiumNo}`;
+      return {
+        tournament_id: tournament.id,
+        stadium_no: stadiumNo,
+        label: cleanLabel,
+        stream_url: cleanUrl || null,
+        stream_title: cleanTitle || null,
+        stream_enabled: form.streamEnabled && !!cleanUrl,
+        updated_at: new Date().toISOString(),
+      };
+    });
+    const stadium1 = stadiumRows[0];
+    const stadium2 = stadiumRows[1];
     setStreamBusy(true);
     setStreamSaved(false);
     setError(null);
@@ -1116,23 +1297,35 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     const { error: err } = await supabase
       .from("tournaments")
       .update({
+        beylive_stadium_count: nextStadiumCount,
         stream_url: nextUrl || null,
         stream_title: nextTitle || null,
         stream_enabled: streamEnabled && !!nextUrl,
-        stadium1_stream_url: nextStadium1Url || null,
-        stadium1_stream_title: nextStadium1Title || null,
-        stadium1_stream_enabled: stadium1StreamEnabled && !!nextStadium1Url,
-        stadium2_stream_url: nextStadium2Url || null,
-        stadium2_stream_title: nextStadium2Title || null,
-        stadium2_stream_enabled: stadium2StreamEnabled && !!nextStadium2Url,
+        stadium1_stream_url: stadium1?.stream_url ?? null,
+        stadium1_stream_title: stadium1?.stream_title ?? null,
+        stadium1_stream_enabled: stadium1?.stream_enabled ?? false,
+        stadium2_stream_url: stadium2?.stream_url ?? null,
+        stadium2_stream_title: stadium2?.stream_title ?? null,
+        stadium2_stream_enabled: stadium2?.stream_enabled ?? false,
       })
       .eq("id", tournament.id);
 
-    setStreamBusy(false);
     if (err) {
+      setStreamBusy(false);
       setError(err.message.replace(/_/g, " "));
       return;
     }
+
+    const { error: stadiumError } = await supabase
+      .from("beylive_stadiums")
+      .upsert(stadiumRows, { onConflict: "tournament_id,stadium_no" });
+
+    setStreamBusy(false);
+    if (stadiumError) {
+      setError(stadiumError.message.replace(/_/g, " "));
+      return;
+    }
+
     setStreamSaved(true);
     load();
   };
@@ -1175,7 +1368,11 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
         )}
         {canManage && !isHost && (
           <p className="mt-4 rounded-md border border-accent/40 bg-accent/10 px-4 py-3 text-sm text-accent">
-            {hasGlobalJudgeAccess ? "Global BEYLIVE judge mode active." : "Judge mode active."} Scan both players to open the match scoreboard.
+            {currentJudgeStadium
+              ? `Judge mode active for ${currentJudgeStadium.label}.`
+              : hasGlobalJudgeAccess
+                ? "Global BEYLIVE judge mode active."
+                : "Judge mode active."} Scan both players to open the match scoreboard.
           </p>
         )}
         {error && <p className="mt-4 text-sm font-semibold text-atk">{error}</p>}
@@ -1206,71 +1403,114 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="font-display text-xs font-bold tracking-[0.2em] text-accent">JUDGES</div>
-                  <div className="mt-0.5 text-xs text-ink-dim">Assign a logged-in account by SPX code or @handle.</div>
+                  <div className="mt-0.5 text-xs text-ink-dim">
+                    Assign backend-approved BEYLIVE judges to a stadium.
+                  </div>
                 </div>
-              </div>
-              <form onSubmit={assignJudge} className="mt-3 grid gap-2 md:grid-cols-[1fr_130px_auto]">
-                <input
-                  value={judgeLookup}
-                  onChange={(event) => setJudgeLookup(event.target.value)}
-                  placeholder="SPX-0001 or @handle"
-                  className="rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent"
-                />
-                <select
-                  value={newJudgeRole}
-                  onChange={(event) => setNewJudgeRole(event.target.value === "scorer" ? "scorer" : "judge")}
-                  className="rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none focus:border-accent"
-                >
-                  <option value="judge">Judge</option>
-                  <option value="scorer">Scorer</option>
-                </select>
                 <button
-                  type="submit"
-                  disabled={judgeBusy || !judgeLookup.trim()}
-                  className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-40"
+                  type="button"
+                  onClick={() => setJudgeToolsOpen((open) => !open)}
+                  className="clip-x border border-edge bg-panel px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink"
                 >
-                  {judgeBusy ? "Saving..." : "Add judge"}
+                  {judgeToolsOpen ? "Hide" : "Show"}
                 </button>
-              </form>
-              {(judgeError || judgeMessage) && (
-                <p className={`mt-2 text-xs font-semibold ${judgeError ? "text-atk" : "text-accent"}`}>
-                  {judgeError ?? judgeMessage}
-                </p>
-              )}
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {judges.length === 0 ? (
-                  <p className="rounded-md border border-edge bg-panel px-3 py-3 text-xs text-ink-dim">
-                    No judges assigned yet.
-                  </p>
-                ) : (
-                  judges.map((judge) => {
-                    const isTournamentHost = judge.user_id === tournament.host;
-                    return (
-                      <div key={judge.user_id} className="rounded-md border border-edge bg-panel px-3 py-2">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold">{profileDisplayName(judge.profile)}</div>
-                            <div className="font-mono text-[11px] text-ink-dim">{beylivePlayerCode(judge.profile)}</div>
-                            <div className="mt-1 text-[10px] uppercase tracking-wide text-accent-2">
-                              {isTournamentHost ? "Host" : judge.role}
+              </div>
+              {judgeToolsOpen ? (
+                <>
+                  <form onSubmit={assignJudge} className="mt-3 grid gap-2 md:grid-cols-[1fr_110px_140px_auto]">
+                    <select
+                      value={judgeLookup}
+                      onChange={(event) => setJudgeLookup(event.target.value)}
+                      className="rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none focus:border-accent"
+                    >
+                      <option value="">Select approved judge</option>
+                      {eligibleJudges.map((judge) => (
+                        <option key={judge.id} value={judge.player_code ?? judge.id}>
+                          {profileDisplayName(judge)} ({beylivePlayerCode(judge)})
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={newJudgeRole}
+                      onChange={(event) => setNewJudgeRole(event.target.value === "scorer" ? "scorer" : "judge")}
+                      className="rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none focus:border-accent"
+                    >
+                      <option value="judge">Judge</option>
+                      <option value="scorer">Scorer</option>
+                    </select>
+                    <select
+                      value={newJudgeStadiumNo}
+                      onChange={(event) => setNewJudgeStadiumNo(event.target.value)}
+                      className="rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none focus:border-accent"
+                    >
+                      {stadiums.map((stadium) => (
+                        <option key={stadium.stadium_no} value={stadium.stadium_no}>
+                          {stadium.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="submit"
+                      disabled={judgeBusy || !judgeLookup.trim()}
+                      className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-40"
+                    >
+                      {judgeBusy ? "Saving..." : "Assign"}
+                    </button>
+                  </form>
+                  {(judgeError || judgeMessage) && (
+                    <p className={`mt-2 text-xs font-semibold ${judgeError ? "text-atk" : "text-accent"}`}>
+                      {judgeError ?? judgeMessage}
+                    </p>
+                  )}
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {judges.length === 0 ? (
+                      <p className="rounded-md border border-edge bg-panel px-3 py-3 text-xs text-ink-dim">
+                        No judges assigned yet.
+                      </p>
+                    ) : (
+                      judges.map((judge) => {
+                        const isTournamentHost = judge.user_id === tournament.host;
+                        const stadium = judge.stadium_no
+                          ? stadiums.find((item) => item.stadium_no === judge.stadium_no)
+                          : null;
+                        return (
+                          <div key={judge.user_id} className="rounded-md border border-edge bg-panel px-3 py-2">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-semibold">{profileDisplayName(judge.profile)}</div>
+                                <div className="font-mono text-[11px] text-ink-dim">{beylivePlayerCode(judge.profile)}</div>
+                                <div className="mt-1 flex flex-wrap gap-1.5 text-[10px] uppercase tracking-wide">
+                                  <span className="rounded bg-accent-2/10 px-1.5 py-0.5 text-accent-2">
+                                    {isTournamentHost ? "Host" : judge.role}
+                                  </span>
+                                  <span className="rounded bg-panel-2 px-1.5 py-0.5 text-ink-dim">
+                                    {isTournamentHost ? "All stadiums" : stadium?.label ?? "All stadiums"}
+                                  </span>
+                                </div>
+                              </div>
+                              {!isTournamentHost && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeJudge(judge.user_id)}
+                                  disabled={judgeBusy}
+                                  className="rounded border border-edge px-2 py-1 text-xs text-ink-dim transition hover:text-atk disabled:opacity-40"
+                                >
+                                  Remove
+                                </button>
+                              )}
                             </div>
                           </div>
-                          {!isTournamentHost && (
-                            <button
-                              type="button"
-                              onClick={() => removeJudge(judge.user_id)}
-                              disabled={judgeBusy}
-                              className="rounded border border-edge px-2 py-1 text-xs text-ink-dim transition hover:text-atk disabled:opacity-40"
-                            >
-                              Remove
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-ink-dim">
+                  <span className="rounded bg-panel px-2 py-1">{judges.length} assigned</span>
+                  <span className="rounded bg-panel px-2 py-1">{eligibleJudges.length} approved available</span>
+                </div>
+              )}
             </div>
 
             <div className="rounded-md border border-edge bg-bg/80 p-4">
@@ -1279,15 +1519,27 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                   <div className="font-display text-xs font-bold tracking-[0.2em] text-accent-2">LIVE STREAMS</div>
                   <div className="mt-0.5 text-xs text-ink-dim">YouTube Live, Twitch, Facebook, or Vimeo URLs</div>
                 </div>
-                <button
-                  onClick={saveStream}
-                  disabled={streamBusy}
-                  className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition enabled:hover:bg-accent/20 disabled:opacity-40"
-                >
-                  {streamBusy ? "Saving..." : "Save stream"}
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  {streamToolsOpen && (
+                    <button
+                      onClick={saveStream}
+                      disabled={streamBusy}
+                      className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition enabled:hover:bg-accent/20 disabled:opacity-40"
+                    >
+                      {streamBusy ? "Saving..." : "Save stream"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setStreamToolsOpen((open) => !open)}
+                    className="clip-x border border-edge bg-panel px-3 py-2 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink"
+                  >
+                    {streamToolsOpen ? "Hide" : "Show"}
+                  </button>
+                </div>
               </div>
-              <div className="mt-3 grid gap-3">
+              {streamToolsOpen ? (
+                <div className="mt-3 grid gap-3">
                 <div className="rounded-md border border-edge bg-panel/60 p-3">
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <div className="font-display text-[10px] font-bold uppercase tracking-wider text-ink-dim">Event feed</div>
@@ -1319,70 +1571,89 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                   </div>
                 </div>
 
-                <div className="grid gap-3 lg:grid-cols-2">
-                  <div className="rounded-md border border-edge bg-panel/60 p-3">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <div className="font-display text-[10px] font-bold uppercase tracking-wider text-accent">Stadium 1</div>
-                      <label className="flex items-center gap-2 text-xs font-semibold text-ink">
-                        <input
-                          type="checkbox"
-                          checked={stadium1StreamEnabled}
-                          onChange={(event) => setStadium1StreamEnabled(event.target.checked)}
-                          className="h-4 w-4 accent-accent"
-                        />
-                        On air
-                      </label>
-                    </div>
-                    <div className="grid gap-2">
-                      <input
-                        value={stadium1StreamTitle}
-                        onChange={(event) => setStadium1StreamTitle(event.target.value)}
-                        maxLength={80}
-                        placeholder="Stadium 1 title"
-                        className="rounded-md border border-edge bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
-                      />
-                      <input
-                        value={stadium1StreamUrl}
-                        onChange={(event) => setStadium1StreamUrl(event.target.value)}
-                        maxLength={500}
-                        placeholder="Stadium 1 stream URL"
-                        className="rounded-md border border-edge bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
-                      />
-                    </div>
-                  </div>
+                <div className="rounded-md border border-edge bg-panel/60 p-3">
+                  <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-accent">
+                    Active stadiums
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={16}
+                    value={stadiumCountInput}
+                    onChange={(event) => setStadiumCountInput(event.target.value)}
+                    className="w-28 rounded-md border border-edge bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
+                  />
+                  <p className="mt-1 text-[10px] text-ink-dim">
+                    New and uncompleted matches are assigned within this stadium count.
+                  </p>
+                </div>
 
-                  <div className="rounded-md border border-edge bg-panel/60 p-3">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <div className="font-display text-[10px] font-bold uppercase tracking-wider text-accent">Stadium 2</div>
-                      <label className="flex items-center gap-2 text-xs font-semibold text-ink">
-                        <input
-                          type="checkbox"
-                          checked={stadium2StreamEnabled}
-                          onChange={(event) => setStadium2StreamEnabled(event.target.checked)}
-                          className="h-4 w-4 accent-accent"
-                        />
-                        On air
-                      </label>
-                    </div>
-                    <div className="grid gap-2">
-                      <input
-                        value={stadium2StreamTitle}
-                        onChange={(event) => setStadium2StreamTitle(event.target.value)}
-                        maxLength={80}
-                        placeholder="Stadium 2 title"
-                        className="rounded-md border border-edge bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
-                      />
-                      <input
-                        value={stadium2StreamUrl}
-                        onChange={(event) => setStadium2StreamUrl(event.target.value)}
-                        maxLength={500}
-                        placeholder="Stadium 2 stream URL"
-                        className="rounded-md border border-edge bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
-                      />
-                    </div>
-                  </div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {Array.from({ length: Math.max(1, Math.min(16, Number(stadiumCountInput) || stadiumCount)) }, (_, index) => {
+                    const stadiumNo = index + 1;
+                    const form = stadiumForms[stadiumNo] ?? {
+                      label: `Stadium ${stadiumNo}`,
+                      streamTitle: "",
+                      streamUrl: "",
+                      streamEnabled: false,
+                    };
+                    const setForm = (patch: Partial<StadiumForm>) =>
+                      setStadiumForms((current) => ({
+                        ...current,
+                        [stadiumNo]: { ...form, ...current[stadiumNo], ...patch },
+                      }));
+
+                    return (
+                      <div key={stadiumNo} className="rounded-md border border-edge bg-panel/60 p-3">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <div className="font-display text-[10px] font-bold uppercase tracking-wider text-accent">
+                            {form.label || `Stadium ${stadiumNo}`}
+                          </div>
+                          <label className="flex items-center gap-2 text-xs font-semibold text-ink">
+                            <input
+                              type="checkbox"
+                              checked={form.streamEnabled}
+                              onChange={(event) => setForm({ streamEnabled: event.target.checked })}
+                              className="h-4 w-4 accent-accent"
+                            />
+                            On air
+                          </label>
+                        </div>
+                        <div className="grid gap-2">
+                          <input
+                            value={form.label}
+                            onChange={(event) => setForm({ label: event.target.value })}
+                            maxLength={40}
+                            placeholder={`Stadium ${stadiumNo}`}
+                            className="rounded-md border border-edge bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
+                          />
+                          <input
+                            value={form.streamTitle}
+                            onChange={(event) => setForm({ streamTitle: event.target.value })}
+                            maxLength={80}
+                            placeholder={`${form.label || `Stadium ${stadiumNo}`} title`}
+                            className="rounded-md border border-edge bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
+                          />
+                          <input
+                            value={form.streamUrl}
+                            onChange={(event) => setForm({ streamUrl: event.target.value })}
+                            maxLength={500}
+                            placeholder={`${form.label || `Stadium ${stadiumNo}`} stream URL`}
+                            className="rounded-md border border-edge bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
+              ) : (
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-ink-dim">
+                  <span className="rounded bg-panel px-2 py-1">{stadiumCount} stadiums</span>
+                  <span className="rounded bg-panel px-2 py-1">{activeStadiumStreams} stadium feeds on air</span>
+                  {streamEnabled && streamUrl && <span className="rounded bg-panel px-2 py-1">Event feed on air</span>}
+                </div>
+              )}
               {streamSaved && <div className="mt-2 text-xs font-semibold text-accent">Stream saved.</div>}
             </div>
           </div>
@@ -1421,7 +1692,9 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
           data={
             {
               tournamentName: tournament.name,
-              dateLabel: shareDateLabel(new Date(), locale),
+              dateLabel: shareDateLabel(tournament.starts_at, locale),
+              venueLabel: [tournament.city, tournament.venue].filter(Boolean).join(" - "),
+              participantsLabel: `${players.length} players`,
               url: typeof window !== "undefined" ? window.location.host : "SPINDEX",
               entries: podium.map((entry) => ({
                 place: entry.place,
@@ -1469,17 +1742,43 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
       )}
 
       {showBracketOverview && (
-        <BeyliveBracketView
-          matches={matches}
-          locale={locale}
-          tournamentId={id}
-          currentRound={currentRound}
-          className="mt-4"
-        />
+        <section className="panel mt-4 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="font-display text-sm font-bold tracking-wider text-ink">Bracket overview</div>
+              <div className="mt-1 text-xs text-ink-dim">
+                {knockoutBracketMatches.filter((match) => match.status === "completed").length}/{knockoutBracketMatches.length} matches complete
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setBracketOverviewOpen((open) => !open)}
+              className="clip-x border border-edge bg-panel px-3 py-2 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink"
+            >
+              {bracketOverviewOpen ? "Hide" : "Show"}
+            </button>
+          </div>
+          {bracketOverviewOpen ? (
+            <BeyliveBracketView
+              matches={matches}
+              locale={locale}
+              tournamentId={id}
+              currentRound={currentRound}
+              className="mt-4"
+              framed={false}
+              showHeader={false}
+            />
+          ) : (
+            <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-ink-dim">
+              <span className="rounded bg-panel px-2 py-1">Bracket hidden</span>
+              <span className="rounded bg-panel px-2 py-1">{knockoutBracketMatches.length} matches</span>
+            </div>
+          )}
+        </section>
       )}
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[0.85fr_1.35fr]">
-        <aside className="grid gap-4">
+      <div className="mt-4 grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <aside className="grid gap-4 xl:sticky xl:top-24 xl:self-start">
           <BeyliveScanner
             onScan={handleScan}
           />
@@ -1565,41 +1864,63 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
             </div>
           )}
           <div className="panel p-4">
-            <div className="mb-3 font-display text-sm font-bold tracking-wider text-ink-dim">
-              {teamMode ? "Team IDs and QR" : "Player IDs and QR"}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="font-display text-sm font-bold tracking-wider text-ink-dim">
+                  {teamMode ? "Team IDs and QR" : "Player IDs and QR"}
+                </div>
+                <div className="mt-0.5 text-xs text-ink-dim">
+                  {idEntryCount} {teamMode ? "teams" : "players"} ready for scan
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIdToolsOpen((open) => !open)}
+                className="clip-x border border-edge bg-panel px-3 py-2 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink"
+              >
+                {idToolsOpen ? "Hide" : "Show"}
+              </button>
             </div>
-            <div className="grid gap-2">
-              {teamMode && teams.length === 0 && localTeams.length > 0 ? (
-                localTeams.map((team) => (
-                  <LocalTeamRow
-                    key={team.id}
-                    team={team}
-                    active={scannedLocalTeam?.id === team.id}
-                  />
-                ))
-              ) : teamMode && teams.length === 0 ? (
-                <p className="rounded-md border border-edge bg-bg px-3 py-4 text-sm text-ink-dim">
-                  Start BEYLIVE to create database team IDs, or run the Partner Battle draw on this browser first.
-                </p>
-              ) : teamMode ? (
-                teams.map((team) => (
-                    <TeamRow
+            {idToolsOpen ? (
+              <div className="mt-3 grid max-h-[360px] gap-2 overflow-y-auto pr-1 thin-scroll">
+                {teamMode && teams.length === 0 && localTeams.length > 0 ? (
+                  localTeams.map((team) => (
+                    <LocalTeamRow
                       key={team.id}
                       team={team}
-                      active={scannedTeam?.id === team.id}
+                      active={scannedLocalTeam?.id === team.id}
                     />
                   ))
-              ) : (
-                players.map((player, index) => (
-                    <PlayerRow
-                      key={player.user_id}
-                      player={player}
-                      index={index}
-                      active={scannedPlayer?.user_id === player.user_id}
-                    />
-                  ))
-              )}
-            </div>
+                ) : teamMode && teams.length === 0 ? (
+                  <p className="rounded-md border border-edge bg-bg px-3 py-4 text-sm text-ink-dim">
+                    Start BEYLIVE to create database team IDs, or run the Partner Battle draw on this browser first.
+                  </p>
+                ) : teamMode ? (
+                  teams.map((team) => (
+                      <TeamRow
+                        key={team.id}
+                        team={team}
+                        active={scannedTeam?.id === team.id}
+                      />
+                    ))
+                ) : (
+                  players.map((player, index) => (
+                      <PlayerRow
+                        key={player.user_id}
+                        player={player}
+                        index={index}
+                        active={scannedPlayer?.user_id === player.user_id}
+                      />
+                    ))
+                )}
+              </div>
+            ) : (
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-ink-dim">
+                <span className="rounded bg-panel px-2 py-1">{idEntryCount} IDs</span>
+                <span className="rounded bg-panel px-2 py-1">QR list hidden</span>
+                {scanValue && scanFound && <span className="rounded bg-accent/10 px-2 py-1 text-accent">scan matched</span>}
+              </div>
+            )}
           </div>
         </aside>
 
@@ -1607,7 +1928,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="font-display text-sm font-bold tracking-wider text-ink-dim">Match control</div>
             <div className="text-xs text-ink-dim">
-              {localPartnerReady ? localMatches.length : displayMatches.length} matches
+              {localPartnerReady ? localMatches.length : controlDisplayMatches.length} matches
             </div>
           </div>
           {scoreError && <p className="mb-3 text-xs font-semibold text-atk">{scoreError}</p>}
@@ -1631,18 +1952,23 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
           ) : groupStage ? (
             <div className="grid gap-4">
               {poolRoundGroups.map(({ roundNo, matches: roundMatches }) => {
-                const pending = roundMatches.filter((m) => m.status !== "completed" && m.status !== "cancelled").length;
+                const visibleRoundMatches =
+                  !isHost && currentJudgeStadiumNo != null
+                    ? roundMatches.filter((match) => match.table_no === currentJudgeStadiumNo)
+                    : roundMatches;
+                if (visibleRoundMatches.length === 0) return null;
+                const pending = visibleRoundMatches.filter((m) => m.status !== "completed" && m.status !== "cancelled").length;
                 const needsAttention = roundNo === currentRound;
                 return (
                   <details key={roundNo} open={needsAttention} className="group rounded-md border border-edge">
                     <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 font-display text-xs font-bold tracking-wider text-accent-2">
                       <span>Round {roundNo}</span>
                       <span className="font-normal text-ink-dim">
-                        {pending === 0 ? "all matches done" : `${pending} left · ${roundMatches.length} total`}
+                        {pending === 0 ? "all matches done" : `${pending} left · ${visibleRoundMatches.length} total`}
                       </span>
                     </summary>
                     <div className="grid gap-3 p-3 pt-0">
-                      {roundMatches.map((match) => (
+                      {visibleRoundMatches.map((match) => (
                         <MatchCard
                           key={match.id}
                           match={match}
@@ -1651,8 +1977,12 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                           mainRoundLabels={mainRoundLabels}
                           locale={locale}
                           id={id}
-                          canScore={canManage}
+                          canScore={canScoreMatch(match)}
+                          canEditStadium={isHost}
+                          stadiums={stadiums}
                           scoreBusy={scoreBusy}
+                          onStart={startMatch}
+                          onChangeStadium={changeMatchStadium}
                           onAddPoint={addPoint}
                           onAddTeamPoint={addTeamPoint}
                           onUndo={undoMatchPoint}
@@ -1667,7 +1997,9 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                 <div className="rounded-md border border-accent/40">
                   <div className="px-3 py-2.5 font-display text-xs font-bold tracking-wider text-accent">Knockout bracket</div>
                   <div className="grid gap-3 p-3 pt-0">
-                    {knockoutBracketMatches.map((match) => (
+                    {knockoutBracketMatches
+                      .filter((match) => isHost || currentJudgeStadiumNo == null || match.table_no === currentJudgeStadiumNo)
+                      .map((match) => (
                       <MatchCard
                         key={match.id}
                         match={match}
@@ -1676,8 +2008,12 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                         mainRoundLabels={mainRoundLabels}
                         locale={locale}
                         id={id}
-                        canScore={canManage}
+                        canScore={canScoreMatch(match)}
+                        canEditStadium={isHost}
+                        stadiums={stadiums}
                         scoreBusy={scoreBusy}
+                        onStart={startMatch}
+                        onChangeStadium={changeMatchStadium}
                         onAddPoint={addPoint}
                         onAddTeamPoint={addTeamPoint}
                         onUndo={undoMatchPoint}
@@ -1690,7 +2026,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
             </div>
           ) : (
             <div className="grid gap-3">
-              {displayMatches.map((match) => (
+              {controlDisplayMatches.map((match) => (
                 <MatchCard
                   key={match.id}
                   match={match}
@@ -1699,8 +2035,12 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                   mainRoundLabels={mainRoundLabels}
                   locale={locale}
                   id={id}
-                  canScore={canManage}
+                  canScore={canScoreMatch(match)}
+                  canEditStadium={isHost}
+                  stadiums={stadiums}
                   scoreBusy={scoreBusy}
+                  onStart={startMatch}
+                  onChangeStadium={changeMatchStadium}
                   onAddPoint={addPoint}
                   onAddTeamPoint={addTeamPoint}
                   onUndo={undoMatchPoint}

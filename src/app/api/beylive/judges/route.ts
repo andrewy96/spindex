@@ -28,7 +28,7 @@ async function requireTournamentHost(request: Request, tournamentId: string) {
 
   const { data: tournament } = await admin
     .from("tournaments")
-    .select("id,host")
+    .select("id,host,beylive_stadium_count")
     .eq("id", tournamentId)
     .maybeSingle();
   if (!tournament) return { error: NextResponse.json({ error: "tournament_not_found" }, { status: 404 }) };
@@ -38,7 +38,7 @@ async function requireTournamentHost(request: Request, tournamentId: string) {
 }
 
 async function findProfile(admin: NonNullable<ReturnType<typeof getAdminClient>>, lookup: string) {
-  const select = "id,handle,display_name,avatar_url,city,player_code,stars,wins,losses,is_walkin,created_at";
+  const select = "id,handle,display_name,avatar_url,city,player_code,stars,wins,losses,is_walkin,beylive_judge,created_at";
   if (UUID_RE.test(lookup)) {
     const { data } = await admin.from("profiles").select(select).eq("id", lookup).maybeSingle();
     if (data) return data as Profile;
@@ -57,15 +57,42 @@ async function findProfile(admin: NonNullable<ReturnType<typeof getAdminClient>>
   return null;
 }
 
+export async function GET(request: Request) {
+  const tournamentId = new URL(request.url).searchParams.get("tournamentId") ?? "";
+  if (!tournamentId) {
+    return NextResponse.json({ error: "missing_fields" }, { status: 400 });
+  }
+
+  const auth = await requireTournamentHost(request, tournamentId);
+  if ("error" in auth) return auth.error;
+
+  const { data, error } = await auth.admin
+    .from("profiles")
+    .select("id,handle,display_name,avatar_url,city,player_code,stars,wins,losses,is_walkin,beylive_judge,created_at")
+    .eq("beylive_judge", true)
+    .eq("is_walkin", false)
+    .is("admin_deleted_at", null)
+    .order("display_name", { ascending: true });
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  return NextResponse.json({ judges: data ?? [] });
+}
+
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     tournamentId?: string;
     lookup?: string;
     role?: JudgeRole;
+    stadiumNo?: number | null;
   } | null;
   const tournamentId = body?.tournamentId;
   const lookup = cleanLookup(body?.lookup);
   const role: JudgeRole = body?.role === "scorer" ? "scorer" : "judge";
+  const rawStadiumNo = body?.stadiumNo;
+  const stadiumNo =
+    typeof rawStadiumNo === "number" && Number.isFinite(rawStadiumNo)
+      ? Math.trunc(rawStadiumNo)
+      : null;
 
   if (!tournamentId || !lookup) {
     return NextResponse.json({ error: "missing_fields" }, { status: 400 });
@@ -77,15 +104,20 @@ export async function POST(request: Request) {
   const profile = await findProfile(auth.admin, lookup);
   if (!profile) return NextResponse.json({ error: "profile_not_found" }, { status: 404 });
   if (profile.is_walkin) return NextResponse.json({ error: "walkin_cannot_login" }, { status: 400 });
+  if (!profile.beylive_judge) return NextResponse.json({ error: "profile_not_beylive_judge" }, { status: 400 });
+  if (stadiumNo !== null && (stadiumNo < 1 || stadiumNo > (auth.tournament.beylive_stadium_count ?? 2))) {
+    return NextResponse.json({ error: "invalid_stadium" }, { status: 400 });
+  }
 
   const { error } = await auth.admin.from("beylive_judges").upsert({
     tournament_id: tournamentId,
     user_id: profile.id,
     role,
+    stadium_no: stadiumNo,
   });
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-  return NextResponse.json({ judge: { tournament_id: tournamentId, user_id: profile.id, role, profile } });
+  return NextResponse.json({ judge: { tournament_id: tournamentId, user_id: profile.id, role, stadium_no: stadiumNo, profile } });
 }
 
 export async function DELETE(request: Request) {

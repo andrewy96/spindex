@@ -487,7 +487,7 @@ export function renderShareCard(
 /* ---------- podium card ---------- */
 
 export interface PodiumCardEntry {
-  place: "1st" | "2nd" | "3rd" | "4th" | "3rd-4th";
+  place: "1st" | "2nd" | "3rd" | "4th" | "5th" | "3rd-4th";
   name: string;
   playerCode: string;
 }
@@ -495,6 +495,8 @@ export interface PodiumCardEntry {
 export interface PodiumCardData {
   tournamentName: string;
   dateLabel: string;
+  venueLabel?: string;
+  participantsLabel?: string;
   entries: PodiumCardEntry[];
   url: string;
 }
@@ -504,9 +506,581 @@ export function podiumSampleText(d: PodiumCardData): string {
     "PODIUM",
     d.tournamentName,
     d.dateLabel,
+    d.venueLabel ?? "",
+    d.participantsLabel ?? "",
     d.url,
+    "SHARE YOUR VICTORY PODIUM RESULTS SPIN BATTLE RISE ONE PLATFORM ALL BLADERS",
     ...d.entries.flatMap((e) => [e.place, e.name, e.playerCode]),
   ].join(" ");
+}
+
+const PODIUM_THEME = {
+  green: "#00ff7a",
+  gold: "#ffd34d",
+  silver: "#cfe9ff",
+  bronze: "#f4a45d",
+  white: "#f5f7f4",
+};
+
+function drawPodiumNotchedPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  n = 22,
+): void {
+  ctx.beginPath();
+  ctx.moveTo(x + n, y);
+  ctx.lineTo(x + w - n, y);
+  ctx.lineTo(x + w, y + n);
+  ctx.lineTo(x + w, y + h - n);
+  ctx.lineTo(x + w - n, y + h);
+  ctx.lineTo(x + n, y + h);
+  ctx.lineTo(x, y + h - n);
+  ctx.lineTo(x, y + n);
+  ctx.closePath();
+}
+
+function drawPodiumHexPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number): void {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 6 + (Math.PI * 2 * i) / 6;
+    const x = cx + Math.cos(a) * r;
+    const y = cy + Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+function podiumPlaceLabel(place: PodiumCardEntry["place"]): string {
+  if (place === "3rd-4th") return "3RD-4TH PLACE";
+  return `${place.toUpperCase()} PLACE`;
+}
+
+function drawPodiumStreaks(ctx: CanvasRenderingContext2D, rng: () => number): void {
+  ctx.save();
+  ctx.lineCap = "round";
+  for (let i = 0; i < 46; i++) {
+    const side = rng() > 0.5 ? 1 : -1;
+    const x = side > 0 ? CARD_W - 40 - rng() * 240 : 40 + rng() * 240;
+    const y = 120 + rng() * 1000;
+    const len = 28 + rng() * 130;
+    ctx.strokeStyle = rgba(PODIUM_THEME.green, 0.06 + rng() * 0.16);
+    ctx.lineWidth = 1 + rng() * 4;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + side * len, y - 40 - rng() * 80);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawPodiumFrame(ctx: CanvasRenderingContext2D): void {
+  ctx.save();
+  ctx.strokeStyle = rgba(PODIUM_THEME.green, 0.7);
+  ctx.lineWidth = 2;
+  drawPodiumNotchedPath(ctx, 18, 18, CARD_W - 36, CARD_H - 36, 34);
+  ctx.stroke();
+
+  ctx.strokeStyle = rgba(PODIUM_THEME.green, 0.32);
+  ctx.lineWidth = 1;
+  drawPodiumNotchedPath(ctx, 34, 34, CARD_W - 68, CARD_H - 68, 28);
+  ctx.stroke();
+
+  for (const [x, y, w] of [
+    [190, 18, 185],
+    [CARD_W - 372, 18, 185],
+    [76, CARD_H - 42, 262],
+    [CARD_W - 338, CARD_H - 42, 262],
+  ]) {
+    ctx.strokeStyle = rgba(PODIUM_THEME.green, 0.48);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + w, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawPodiumChrome(ctx: CanvasRenderingContext2D, seed: number) {
+  const rng = mulberry32(seed);
+  const display = displayFamily();
+  const body = bodyFamily();
+
+  const bg = ctx.createLinearGradient(0, 0, CARD_W, CARD_H);
+  bg.addColorStop(0, "#020504");
+  bg.addColorStop(0.45, "#06100d");
+  bg.addColorStop(1, "#020303");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, CARD_W, CARD_H);
+
+  const centerGlow = ctx.createRadialGradient(CARD_W / 2, 560, 0, CARD_W / 2, 560, 720);
+  centerGlow.addColorStop(0, rgba(PODIUM_THEME.green, 0.11));
+  centerGlow.addColorStop(0.55, rgba(PODIUM_THEME.green, 0.03));
+  centerGlow.addColorStop(1, rgba(PODIUM_THEME.green, 0));
+  ctx.fillStyle = centerGlow;
+  ctx.fillRect(0, 0, CARD_W, CARD_H);
+
+  const floorGlow = ctx.createRadialGradient(835, 1118, 0, 835, 1118, 420);
+  floorGlow.addColorStop(0, rgba(PODIUM_THEME.green, 0.28));
+  floorGlow.addColorStop(0.34, rgba(PODIUM_THEME.green, 0.1));
+  floorGlow.addColorStop(1, rgba(PODIUM_THEME.green, 0));
+  ctx.fillStyle = floorGlow;
+  ctx.fillRect(0, 0, CARD_W, CARD_H);
+
+  drawPodiumStreaks(ctx, rng);
+
+  ctx.strokeStyle = rgba(PODIUM_THEME.green, 0.07);
+  ctx.lineWidth = 1;
+  for (let x = 60; x < CARD_W; x += 80) {
+    ctx.beginPath();
+    ctx.moveTo(x, 90);
+    ctx.lineTo(x - 260, CARD_H - 60);
+    ctx.stroke();
+  }
+
+  drawPodiumFrame(ctx);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  return { rng, display, body };
+}
+
+function drawPodiumLogo(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, display: string): void {
+  drawPodiumNotchedPath(ctx, x, y, w, h, 24);
+  ctx.fillStyle = "rgba(0,0,0,0.36)";
+  ctx.fill();
+  ctx.strokeStyle = rgba(PODIUM_THEME.green, 0.6);
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  if (logoImage) {
+    const logoH = h * 0.72;
+    const logoW = Math.min(w * 0.78, logoH * (logoImage.width / logoImage.height));
+    ctx.drawImage(logoImage, x + w / 2 - logoW / 2, y + h / 2 - logoH / 2, logoW, logoH);
+    return;
+  }
+
+  ctx.font = `900 44px ${display}`;
+  ctx.fillStyle = THEME.ink;
+  ctx.fillText("SPINDEX", x + w / 2, y + h / 2 + 14);
+  ctx.fillStyle = PODIUM_THEME.green;
+  ctx.fillText("X", x + w / 2 + 112, y + h / 2 + 14);
+}
+
+function drawPodiumTitle(ctx: CanvasRenderingContext2D, display: string): void {
+  ctx.font = `700 22px ${display}`;
+  ctx.fillStyle = THEME.ink;
+  drawTrackedFrom(ctx, "SHARE YOUR", 56, 66, 5);
+  drawTrackedFrom(ctx, "VICTORY", 56, 100, 7);
+
+  ctx.textAlign = "right";
+  ctx.font = `900 24px ${display}`;
+  ctx.fillStyle = PODIUM_THEME.green;
+  ctx.fillText("#SPINDEX", CARD_W - 56, 70);
+  ctx.font = `700 21px ${display}`;
+  ctx.fillStyle = THEME.ink;
+  ctx.fillText("SPIN.", CARD_W - 56, 112);
+  ctx.fillText("BATTLE.", CARD_W - 56, 150);
+  ctx.fillText("RISE.", CARD_W - 56, 188);
+  ctx.textAlign = "center";
+
+  drawPodiumLogo(ctx, 386, 24, 308, 78, display);
+
+  const title = "PODIUM";
+  const titleSize = fitFontSize(ctx, title, 900, display, 112, 700, 0.02);
+  ctx.font = `italic 900 ${titleSize}px ${display}`;
+  const titleFill = ctx.createLinearGradient(0, 130, 0, 250);
+  titleFill.addColorStop(0, "#ffffff");
+  titleFill.addColorStop(0.52, "#eef1ed");
+  titleFill.addColorStop(1, "#9da3a7");
+  ctx.shadowColor = rgba(PODIUM_THEME.green, 0.46);
+  ctx.shadowBlur = 18;
+  ctx.fillStyle = titleFill;
+  ctx.fillText(title, CARD_W / 2, 224);
+  ctx.shadowBlur = 0;
+
+  ctx.font = `900 36px ${display}`;
+  ctx.fillStyle = PODIUM_THEME.green;
+  drawTracked(ctx, "RESULTS", CARD_W / 2, 284, 16);
+
+  ctx.strokeStyle = rgba(PODIUM_THEME.green, 0.62);
+  ctx.lineWidth = 3;
+  for (let i = 0; i < 3; i++) {
+    const y = 300 + i * 7;
+    ctx.beginPath();
+    ctx.moveTo(292 + i * 18, y);
+    ctx.lineTo(430, y);
+    ctx.moveTo(650, y);
+    ctx.lineTo(788 - i * 18, y);
+    ctx.stroke();
+  }
+}
+
+function drawPodiumPanel(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  color: string,
+  alpha = 0.28,
+): void {
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 26;
+  drawPodiumNotchedPath(ctx, x, y, w, h, 22);
+  const fill = ctx.createLinearGradient(x, y, x + w, y + h);
+  fill.addColorStop(0, rgba(color, alpha));
+  fill.addColorStop(0.52, "rgba(0,0,0,0.78)");
+  fill.addColorStop(1, rgba(color, alpha * 0.42));
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.strokeStyle = rgba(color, 0.86);
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  drawPodiumNotchedPath(ctx, x + 14, y + 14, w - 28, h - 28, 16);
+  ctx.strokeStyle = rgba(color, 0.22);
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.save();
+  drawPodiumNotchedPath(ctx, x + 12, y + 12, w - 24, h - 24, 18);
+  ctx.clip();
+  ctx.strokeStyle = rgba(color, 0.08);
+  ctx.lineWidth = 1;
+  for (let yy = y + 16; yy < y + h; yy += 42) {
+    ctx.beginPath();
+    ctx.moveTo(x + 12, yy);
+    ctx.lineTo(x + w - 12, yy - 86);
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.restore();
+}
+
+function drawPodiumBadge(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+  color: string,
+  text: string,
+  display: string,
+  crown = false,
+): void {
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 28;
+
+  ctx.fillStyle = rgba(color, 0.42);
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 1.1, cy + 4);
+  ctx.lineTo(cx - r * 2.2, cy + r * 0.45);
+  ctx.lineTo(cx - r * 1.55, cy - r * 0.26);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(cx + r * 1.1, cy + 4);
+  ctx.lineTo(cx + r * 2.2, cy + r * 0.45);
+  ctx.lineTo(cx + r * 1.55, cy - r * 0.26);
+  ctx.closePath();
+  ctx.fill();
+
+  drawPodiumHexPath(ctx, cx, cy, r);
+  const fill = ctx.createRadialGradient(cx - r * 0.25, cy - r * 0.4, 0, cx, cy, r * 1.35);
+  fill.addColorStop(0, "#ffffff");
+  fill.addColorStop(0.18, color);
+  fill.addColorStop(1, "#2b2110");
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = color;
+  ctx.stroke();
+
+  ctx.shadowBlur = 0;
+  ctx.font = `900 ${r * 1.02}px ${display}`;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(text, cx, cy + r * 0.35);
+
+  if (crown) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(cx - 32, cy - r - 18);
+    ctx.lineTo(cx - 20, cy - r - 52);
+    ctx.lineTo(cx, cy - r - 27);
+    ctx.lineTo(cx + 20, cy - r - 52);
+    ctx.lineTo(cx + 32, cy - r - 18);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawAvatar(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string): void {
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 22;
+  ctx.strokeStyle = rgba(color, 0.9);
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = rgba(color, 0.34);
+  ctx.lineWidth = 10;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 13, 0.1, Math.PI * 1.75);
+  ctx.stroke();
+
+  const face = ctx.createLinearGradient(cx, cy - r, cx, cy + r);
+  face.addColorStop(0, "#ffffff");
+  face.addColorStop(1, "#7e858b");
+  ctx.fillStyle = face;
+  ctx.shadowBlur = 0;
+  ctx.beginPath();
+  ctx.arc(cx, cy - r * 0.22, r * 0.27, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r * 0.39, r * 0.48, r * 0.31, 0, Math.PI, 0, true);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawPodiumCardSlot(
+  ctx: CanvasRenderingContext2D,
+  entry: PodiumCardEntry,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  color: string,
+  badgeText: string,
+  display: string,
+  body: string,
+  primary = false,
+): void {
+  drawPodiumPanel(ctx, x, y, w, h, color, primary ? 0.3 : 0.2);
+  drawPodiumBadge(ctx, x + w / 2, y - (primary ? 6 : 8), primary ? 62 : 54, color, badgeText, display, primary);
+
+  ctx.font = `900 ${primary ? 23 : 20}px ${display}`;
+  ctx.fillStyle = PODIUM_THEME.green;
+  drawTracked(ctx, podiumPlaceLabel(entry.place), x + w / 2, y + (primary ? 104 : 94), primary ? 4 : 3);
+
+  const name = entry.name.toUpperCase();
+  const nameSize = fitFontSize(ctx, name, 900, display, primary ? 44 : 36, w - 54);
+  ctx.font = `900 ${nameSize}px ${display}`;
+  ctx.fillStyle = PODIUM_THEME.white;
+  ctx.shadowColor = "rgba(255,255,255,0.28)";
+  ctx.shadowBlur = 8;
+  ctx.fillText(name, x + w / 2, y + (primary ? 152 : 136), w - 42);
+  ctx.shadowBlur = 0;
+
+  ctx.font = `700 ${primary ? 24 : 21}px ${body}`;
+  ctx.fillStyle = "rgba(224,230,235,0.82)";
+  ctx.fillText(entry.playerCode.toUpperCase(), x + w / 2, y + (primary ? 190 : 172), w - 42);
+
+  drawAvatar(ctx, x + w / 2, y + h - (primary ? 110 : 88), primary ? 88 : 70, color);
+}
+
+function drawLowerPodiumCard(
+  ctx: CanvasRenderingContext2D,
+  entry: PodiumCardEntry,
+  x: number,
+  y: number,
+  w: number,
+  display: string,
+  body: string,
+): void {
+  drawPodiumPanel(ctx, x, y, w, 118, PODIUM_THEME.green, 0.13);
+  drawAvatar(ctx, x + 78, y + 59, 38, PODIUM_THEME.green);
+
+  ctx.textAlign = "left";
+  ctx.font = `900 19px ${display}`;
+  ctx.fillStyle = PODIUM_THEME.green;
+  ctx.fillText(podiumPlaceLabel(entry.place), x + 150, y + 43);
+
+  const name = entry.name.toUpperCase();
+  const nameSize = fitFontSize(ctx, name, 900, display, 30, w - 190);
+  ctx.font = `900 ${nameSize}px ${display}`;
+  ctx.fillStyle = PODIUM_THEME.white;
+  ctx.fillText(name, x + 150, y + 78, w - 170);
+
+  ctx.font = `700 19px ${body}`;
+  ctx.fillStyle = "rgba(224,230,235,0.68)";
+  ctx.fillText(entry.playerCode.toUpperCase(), x + 150, y + 105, w - 170);
+  ctx.textAlign = "center";
+}
+
+function drawInfoIcon(ctx: CanvasRenderingContext2D, kind: "event" | "venue" | "date" | "participants", x: number, y: number): void {
+  ctx.save();
+  ctx.strokeStyle = PODIUM_THEME.green;
+  ctx.fillStyle = PODIUM_THEME.green;
+  ctx.lineWidth = 4;
+  if (kind === "event") {
+    ctx.strokeRect(x, y + 8, 30, 30);
+    ctx.beginPath();
+    ctx.moveTo(x, y + 18);
+    ctx.lineTo(x + 30, y + 18);
+    ctx.stroke();
+    ctx.fillRect(x + 6, y, 5, 12);
+    ctx.fillRect(x + 20, y, 5, 12);
+  } else if (kind === "venue") {
+    ctx.beginPath();
+    ctx.arc(x + 15, y + 15, 14, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x + 15, y + 15, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x + 15, y + 32);
+    ctx.lineTo(x + 4, y + 50);
+    ctx.lineTo(x + 26, y + 50);
+    ctx.closePath();
+    ctx.fill();
+  } else if (kind === "date") {
+    ctx.beginPath();
+    ctx.arc(x + 18, y + 24, 17, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + 18, y + 24);
+    ctx.lineTo(x + 18, y + 12);
+    ctx.moveTo(x + 18, y + 24);
+    ctx.lineTo(x + 30, y + 24);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.arc(x + 12, y + 18, 9, 0, Math.PI * 2);
+    ctx.arc(x + 28, y + 18, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.roundRect(x + 2, y + 30, 36, 18, 8);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawInfoItem(
+  ctx: CanvasRenderingContext2D,
+  kind: "event" | "venue" | "date" | "participants",
+  label: string,
+  value: string,
+  x: number,
+  y: number,
+  display: string,
+  body: string,
+  maxWidth: number,
+): void {
+  drawInfoIcon(ctx, kind, x, y - 20);
+  ctx.textAlign = "left";
+  ctx.font = `900 18px ${display}`;
+  ctx.fillStyle = PODIUM_THEME.green;
+  ctx.fillText(label, x + 58, y);
+  const upperValue = value.toUpperCase();
+  const size = fitFontSize(ctx, upperValue, 700, display, 24, maxWidth);
+  ctx.font = `700 ${size}px ${body}`;
+  ctx.fillStyle = THEME.ink;
+  ctx.fillText(upperValue, x + 58, y + 28, maxWidth);
+  ctx.textAlign = "center";
+}
+
+function drawBeybladeDisc(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-0.28);
+  ctx.shadowColor = PODIUM_THEME.green;
+  ctx.shadowBlur = 28;
+  const disc = ctx.createRadialGradient(0, 0, 8, 0, 0, 86);
+  disc.addColorStop(0, "#d7ffe8");
+  disc.addColorStop(0.14, PODIUM_THEME.green);
+  disc.addColorStop(0.32, "#17271d");
+  disc.addColorStop(0.58, "#0b0f0d");
+  disc.addColorStop(1, PODIUM_THEME.green);
+  ctx.fillStyle = disc;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 112, 42, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#111";
+  ctx.lineWidth = 10;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 72, 25, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = rgba(PODIUM_THEME.green, 0.95);
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 42, 14, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawPodiumInfoPanel(ctx: CanvasRenderingContext2D, data: PodiumCardData, display: string, body: string): void {
+  const x = 76;
+  const y = 1044;
+  const w = CARD_W - 152;
+  const h = 170;
+  drawPodiumPanel(ctx, x, y, w, h, PODIUM_THEME.green, 0.12);
+
+  const venue = data.venueLabel?.trim() || "Venue TBA";
+  const participants = data.participantsLabel?.trim() || `${data.entries.length} players`;
+  drawInfoItem(ctx, "event", "EVENT", data.tournamentName, x + 42, y + 52, display, body, 342);
+  drawInfoItem(ctx, "venue", "VENUE", venue, x + 42, y + 122, display, body, 342);
+
+  ctx.strokeStyle = rgba(PODIUM_THEME.green, 0.55);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x + 446, y + 30);
+  ctx.lineTo(x + 446, y + h - 30);
+  ctx.stroke();
+
+  drawInfoItem(ctx, "date", "DATE", data.dateLabel, x + 502, y + 52, display, body, 300);
+  drawInfoItem(ctx, "participants", "PARTICIPANTS", participants, x + 502, y + 122, display, body, 300);
+}
+
+function drawPodiumFooter(ctx: CanvasRenderingContext2D, data: PodiumCardData, display: string): void {
+  const y = 1270;
+  drawPodiumNotchedPath(ctx, 34, y - 36, CARD_W - 68, 78, 26);
+  ctx.fillStyle = "rgba(0,0,0,0.46)";
+  ctx.fill();
+  ctx.strokeStyle = rgba(PODIUM_THEME.green, 0.42);
+  ctx.stroke();
+
+  ctx.textAlign = "left";
+  ctx.font = `700 14px ${display}`;
+  ctx.fillStyle = THEME.inkDim;
+  ctx.fillText("VISIT", 60, y - 2);
+  ctx.font = `900 15px ${display}`;
+  ctx.fillStyle = PODIUM_THEME.green;
+  ctx.fillText(data.url.toUpperCase(), 60, y + 26, 300);
+
+  ctx.textAlign = "center";
+  ctx.font = `900 21px ${display}`;
+  ctx.fillStyle = THEME.ink;
+  drawTracked(ctx, "ONE PLATFORM.", CARD_W / 2, y + 2, 7);
+  ctx.fillStyle = PODIUM_THEME.green;
+  drawTracked(ctx, "ALL BLADERS.", CARD_W / 2, y + 32, 8);
+
+  ctx.textAlign = "left";
+  ctx.font = `700 14px ${display}`;
+  ctx.fillStyle = THEME.inkDim;
+  ctx.fillText("FOLLOW US", CARD_W - 300, y - 2);
+  ctx.strokeStyle = PODIUM_THEME.green;
+  ctx.fillStyle = PODIUM_THEME.green;
+  ["IG", "TT", "YT"].forEach((label, index) => {
+    const sx = CARD_W - 300 + index * 44;
+    ctx.beginPath();
+    ctx.roundRect(sx, y + 8, 30, 30, 7);
+    ctx.stroke();
+    ctx.font = `900 10px ${display}`;
+    ctx.fillText(label, sx + 7, y + 28);
+  });
+  ctx.font = `700 14px ${display}`;
+  ctx.fillStyle = THEME.ink;
+  ctx.fillText("@SPINDEX_MY", CARD_W - 156, y + 29);
+  ctx.textAlign = "center";
 }
 
 function drawPodiumPlace(
@@ -520,21 +1094,15 @@ function drawPodiumPlace(
   display: string,
   body: string,
 ) {
-  ctx.font = `${medalSize}px sans-serif`;
-  ctx.fillText(medal, CARD_W / 2, y);
-
-  ctx.font = `700 26px ${display}`;
-  ctx.fillStyle = labelColor;
-  drawTracked(ctx, entry.place.toUpperCase() + " PLACE", CARD_W / 2, y + 44, 5);
-
-  const fitSize = fitFontSize(ctx, entry.name, 900, display, nameSize, 900);
-  ctx.font = `900 ${fitSize}px ${display}`;
-  ctx.fillStyle = THEME.ink;
-  ctx.fillText(entry.name, CARD_W / 2, y + 44 + fitSize * 0.86);
-
-  ctx.font = `400 26px ${body}`;
-  ctx.fillStyle = THEME.inkDim;
-  ctx.fillText(entry.playerCode, CARD_W / 2, y + 44 + fitSize * 0.86 + 38);
+  void ctx;
+  void entry;
+  void medal;
+  void y;
+  void medalSize;
+  void labelColor;
+  void nameSize;
+  void display;
+  void body;
 }
 
 export function renderPodiumCard(
@@ -547,40 +1115,30 @@ export function renderPodiumCard(
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
-  const { display, body } = drawCardChrome(ctx, seed);
-
-  /* header */
-  const headerSize = fitFontSize(ctx, "PODIUM", 900, display, 92, 880, 0.16);
-  ctx.font = `900 ${headerSize}px ${display}`;
-  ctx.fillStyle = THEME.accent;
-  ctx.shadowColor = THEME.accent;
-  ctx.shadowBlur = 44;
-  drawTracked(ctx, "PODIUM", CARD_W / 2, 172, headerSize * 0.16);
-  drawTracked(ctx, "PODIUM", CARD_W / 2, 172, headerSize * 0.16);
-  ctx.shadowBlur = 0;
-
-  const nameSize = fitFontSize(ctx, data.tournamentName, 700, display, 40, 880);
-  ctx.font = `700 ${nameSize}px ${display}`;
-  ctx.fillStyle = THEME.ink;
-  ctx.fillText(data.tournamentName, CARD_W / 2, 224);
-
-  ctx.font = `400 27px ${body}`;
-  ctx.fillStyle = THEME.inkDim;
-  ctx.fillText(data.dateLabel, CARD_W / 2, 264);
+  const { display, body } = drawPodiumChrome(ctx, seed);
+  drawPodiumTitle(ctx, display);
 
   const first = data.entries.find((e) => e.place === "1st");
   const second = data.entries.find((e) => e.place === "2nd");
   const resolvedThird = data.entries.find((e) => e.place === "3rd");
-  const resolvedFourth = data.entries.find((e) => e.place === "4th");
-  const thirdFourth = resolvedThird || resolvedFourth
-    ? [resolvedThird, resolvedFourth].filter((entry): entry is PodiumCardEntry => Boolean(entry))
-    : data.entries.filter((e) => e.place === "3rd-4th");
+  const sharedThird = data.entries.filter((e) => e.place === "3rd-4th");
+  const third = resolvedThird ?? sharedThird[0];
+  const usedEntries = new Set<PodiumCardEntry>();
+  const thirdFourth: PodiumCardEntry[] = [];
 
   if (first) {
+    usedEntries.add(first);
+    drawPodiumCardSlot(ctx, first, 370, 428, 340, 452, PODIUM_THEME.gold, "1", display, body, true);
     drawPodiumPlace(ctx, first, "🥇", 380, 140, THEME.accent, 90, display, body);
   }
   if (second) {
+    usedEntries.add(second);
+    drawPodiumCardSlot(ctx, second, 70, 522, 300, 358, PODIUM_THEME.silver, "2", display, body);
     drawPodiumPlace(ctx, second, "🥈", 660, 100, THEME.accent2, 66, display, body);
+  }
+  if (third) {
+    usedEntries.add(third);
+    drawPodiumCardSlot(ctx, third, 710, 522, 300, 358, PODIUM_THEME.bronze, "3", display, body);
   }
   if (thirdFourth.length > 0) {
     ctx.font = `88px sans-serif`;
@@ -609,7 +1167,17 @@ export function renderPodiumCard(
     });
   }
 
-  drawCardFooter(ctx, data.url, display, body);
+  const lowerEntries = data.entries.filter((entry) => !usedEntries.has(entry)).slice(0, 2);
+  if (lowerEntries.length === 1) {
+    drawLowerPodiumCard(ctx, lowerEntries[0], 286, 906, 508, display, body);
+  } else {
+    lowerEntries.forEach((entry, index) => {
+      drawLowerPodiumCard(ctx, entry, index === 0 ? 76 : 548, 906, 456, display, body);
+    });
+  }
+
+  drawPodiumInfoPanel(ctx, data, display, body);
+  drawPodiumFooter(ctx, data, display);
 }
 
 function drawTrackedFrom(
@@ -710,7 +1278,11 @@ function drawChipWrap(
 
 /* ---------- data plumbing ---------- */
 
-export function canvasToPngFile(canvas: HTMLCanvasElement, fileId: string): Promise<File> {
+export function canvasToPngFile(
+  canvas: HTMLCanvasElement,
+  fileId: string,
+  prefix = "spindex-battle",
+): Promise<File> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (!blob) {
@@ -718,7 +1290,7 @@ export function canvasToPngFile(canvas: HTMLCanvasElement, fileId: string): Prom
         return;
       }
       resolve(
-        new File([blob], `spindex-battle-${fileId.slice(0, 8)}.png`, { type: "image/png" }),
+        new File([blob], `${prefix}-${fileId.slice(0, 8)}.png`, { type: "image/png" }),
       );
     }, "image/png");
   });

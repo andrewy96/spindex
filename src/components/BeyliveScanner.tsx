@@ -55,16 +55,16 @@ export default function BeyliveScanner({
 
   return (
     <div className="rounded-md border border-edge bg-panel p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div>
-          <div className="font-display text-xs font-bold tracking-wider text-ink">Phone camera scan</div>
-          <p className="mt-0.5 text-[11px] text-ink-dim">Scan a BEYLIVE QR or type the player/team ID.</p>
+      <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="font-display text-xs font-bold tracking-wider text-ink">Scan player QR</div>
+          <p className="mt-0.5 text-[11px] text-ink-dim">Camera scan or key in player/team ID.</p>
         </div>
         {status === "scanning" ? (
           <button
             type="button"
             onClick={stop}
-            className="rounded border border-edge px-2 py-1 text-xs text-ink-dim transition hover:text-ink"
+            className="clip-x border border-edge bg-bg px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink"
           >
             Stop
           </button>
@@ -73,7 +73,7 @@ export default function BeyliveScanner({
             type="button"
             onClick={start}
             disabled={status === "loading"}
-            className="rounded bg-accent px-2 py-1 text-xs font-bold text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+            className="clip-x bg-accent px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
           >
             {status === "loading" ? "Opening..." : "Scan"}
           </button>
@@ -84,10 +84,10 @@ export default function BeyliveScanner({
         ref={videoRef}
         muted
         playsInline
-        className={`mb-2 aspect-video w-full rounded bg-bg object-cover ${status === "scanning" ? "block" : "hidden"}`}
+        className={`mb-2 aspect-[4/3] max-h-72 w-full rounded-md border border-accent/30 bg-bg object-cover ${status === "scanning" ? "block" : "hidden"}`}
       />
 
-      <div className="flex gap-2">
+      <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
         <input
           value={manual}
           onChange={(event) => setManual(event.target.value)}
@@ -97,7 +97,7 @@ export default function BeyliveScanner({
         <button
           type="button"
           onClick={submitManual}
-          className="rounded-md border border-edge bg-panel-2 px-3 py-2 text-xs font-bold text-accent transition hover:border-accent/60"
+          className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-[10px] font-bold tracking-wider text-accent transition hover:border-accent/60"
         >
           Find
         </button>

@@ -159,6 +159,17 @@ export interface BeyliveTeam {
   members?: BeyliveTeamMember[];
 }
 
+export interface BeyliveStadium {
+  tournament_id: string;
+  stadium_no: number;
+  label: string | null;
+  stream_url: string | null;
+  stream_title: string | null;
+  stream_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CommunityTournament {
   id: string;
   host: string;
@@ -179,6 +190,7 @@ export interface CommunityTournament {
   stadium2_stream_url: string | null;
   stadium2_stream_title: string | null;
   stadium2_stream_enabled: boolean;
+  beylive_stadium_count: number;
   current_round: number | null;
   target_score: number;
   winner_id: string | null;
@@ -191,6 +203,7 @@ export interface CommunityTournament {
   winner_team?: BeyliveTeam | null;
   players?: TournamentPlayer[];
   teams?: BeyliveTeam[];
+  stadiums?: BeyliveStadium[];
 }
 
 export type BeyliveBracket = "main" | "losers" | "grand" | "leaderboard" | `pool_${number}`;
@@ -201,6 +214,7 @@ export interface BeyliveJudge {
   tournament_id: string;
   user_id: string;
   role: "host" | "judge" | "scorer";
+  stadium_no: number | null;
   created_at: string;
   profile?: Profile;
 }
@@ -252,7 +266,7 @@ export const MATCH_SELECT =
   "*, p1_profile:profiles!matches_p1_fkey(*), p2_profile:profiles!matches_p2_fkey(*)";
 
 export const TOURNAMENT_SELECT =
-  "*, host_profile:profiles!tournaments_host_fkey(*), winner_profile:profiles!tournaments_winner_id_fkey(*), winner_team:beylive_teams!tournaments_winner_team_id_fkey(*, members:beylive_team_members!beylive_team_members_team_id_fkey(*, profile:profiles!beylive_team_members_user_id_fkey(*))), players:tournament_players(*, profile:profiles!tournament_players_user_id_fkey(*)), teams:beylive_teams!beylive_teams_tournament_id_fkey(*, members:beylive_team_members!beylive_team_members_team_id_fkey(*, profile:profiles!beylive_team_members_user_id_fkey(*)))";
+  "*, host_profile:profiles!tournaments_host_fkey(*), winner_profile:profiles!tournaments_winner_id_fkey(*), winner_team:beylive_teams!tournaments_winner_team_id_fkey(*, members:beylive_team_members!beylive_team_members_team_id_fkey(*, profile:profiles!beylive_team_members_user_id_fkey(*))), players:tournament_players(*, profile:profiles!tournament_players_user_id_fkey(*)), teams:beylive_teams!beylive_teams_tournament_id_fkey(*, members:beylive_team_members!beylive_team_members_team_id_fkey(*, profile:profiles!beylive_team_members_user_id_fkey(*))), stadiums:beylive_stadiums!beylive_stadiums_tournament_id_fkey(*)";
 
 export const BEYLIVE_MATCH_SELECT =
   "*, players:beylive_match_players(*, profile:profiles!beylive_match_players_user_id_fkey(*), team:beylive_teams!beylive_match_players_team_id_fkey(*, members:beylive_team_members!beylive_team_members_team_id_fkey(*, profile:profiles!beylive_team_members_user_id_fkey(*)))), rounds:beylive_match_rounds(*, profile:profiles!beylive_match_rounds_user_id_fkey(*), team:beylive_teams!beylive_match_rounds_team_id_fkey(*))";

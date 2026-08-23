@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Locale } from "@/i18n";
 import { BeyliveMatch } from "@/lib/supabase";
@@ -266,14 +267,38 @@ export default function BeyliveBracketView({
   tournamentId,
   currentRound,
   className = "",
+  framed = true,
+  showHeader = true,
 }: {
   matches: BeyliveMatch[];
   locale: Locale;
   tournamentId: string;
   currentRound?: number;
   className?: string;
+  framed?: boolean;
+  showHeader?: boolean;
 }) {
   const rounds = groupBracketRounds(matches);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const [viewportWidth, setViewportWidth] = useState(0);
+
+  useEffect(() => {
+    const node = viewportRef.current;
+    if (!node) return;
+
+    const update = () => setViewportWidth(node.clientWidth);
+    update();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", update);
+      return () => window.removeEventListener("resize", update);
+    }
+
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
   if (rounds.length === 0) return null;
 
   const layout = buildBracketLayout(rounds);
@@ -285,82 +310,93 @@ export default function BeyliveBracketView({
   const finalRound = rounds[rounds.length - 1];
   const finalMatch = finalRound?.matches.find((match) => match.status === "completed" && match.winner_id);
   const champion = finalMatch?.players?.find((player) => player.user_id === finalMatch.winner_id);
+  const scale = viewportWidth > 0 ? Math.min(1, viewportWidth / layout.width) : 1;
 
   return (
-    <section className={`panel p-5 ${className}`}>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="font-display text-sm font-bold tracking-wider text-ink">Bracket overview</div>
-          <div className="mt-1 text-xs text-ink-dim">
-            {completedMatchCount}/{visibleMatchCount} matches complete
-          </div>
-        </div>
-        {champion && (
-          <div className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-right">
-            <div className="text-[10px] uppercase tracking-wide text-ink-dim">Winner</div>
-            <div className="max-w-56 truncate font-display text-sm font-bold text-accent">
-              {beyliveParticipantName(champion)}
+    <section className={`${framed ? "panel p-5" : ""} ${className}`}>
+      {showHeader && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="font-display text-sm font-bold tracking-wider text-ink">Bracket overview</div>
+            <div className="mt-1 text-xs text-ink-dim">
+              {completedMatchCount}/{visibleMatchCount} matches complete
             </div>
           </div>
-        )}
-      </div>
-
-      <div className="thin-scroll overflow-x-auto pb-2">
-        <div
-          className="relative min-w-max"
-          style={{ width: layout.width, height: layout.height }}
-        >
-          <svg
-            className="pointer-events-none absolute inset-0 z-0"
-            width={layout.width}
-            height={layout.height}
-            viewBox={`0 0 ${layout.width} ${layout.height}`}
-            aria-hidden="true"
-          >
-            {layout.connections.map((connection) => (
-              <path
-                key={connection.id}
-                d={connection.d}
-                fill="none"
-                stroke={connection.active ? "rgba(0, 229, 143, 0.48)" : "rgba(56, 217, 255, 0.24)"}
-                strokeWidth={connection.active ? 2 : 1.5}
-                strokeLinecap="square"
-                strokeLinejoin="round"
-                vectorEffect="non-scaling-stroke"
-              />
-            ))}
-          </svg>
-
-          {layout.rounds.map((round) => (
-            <div key={round.roundNo}>
-              <div
-                className="absolute top-0 z-10 flex items-center justify-between gap-2"
-                style={{ left: round.x, width: CARD_WIDTH }}
-              >
-                <div className="min-w-0 truncate font-display text-xs font-bold uppercase tracking-wider text-accent-2">
-                  {round.label}
-                </div>
-                <div className="shrink-0 text-[10px] font-semibold text-ink-dim">
-                  {round.matches.length}
-                </div>
+          {champion && (
+            <div className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-right">
+              <div className="text-[10px] uppercase tracking-wide text-ink-dim">Winner</div>
+              <div className="max-w-56 truncate font-display text-sm font-bold text-accent">
+                {beyliveParticipantName(champion)}
               </div>
-              {round.matches.map((positioned) => (
-                <div
-                  key={positioned.match.id}
-                  className="absolute z-10"
-                  style={{ left: positioned.x, top: positioned.y }}
-                >
-                  <MatchNode
-                    match={positioned.match}
-                    title={positioned.title}
-                    locale={locale}
-                    tournamentId={tournamentId}
-                    currentRound={currentRound}
-                  />
-                </div>
-              ))}
             </div>
-          ))}
+          )}
+        </div>
+      )}
+
+      <div ref={viewportRef} className="overflow-hidden pb-2">
+        <div
+          style={{ height: Math.ceil(layout.height * scale) }}
+        >
+          <div
+            className="relative origin-top-left"
+            style={{
+              width: layout.width,
+              height: layout.height,
+              transform: `scale(${scale})`,
+            }}
+          >
+            <svg
+              className="pointer-events-none absolute inset-0 z-0"
+              width={layout.width}
+              height={layout.height}
+              viewBox={`0 0 ${layout.width} ${layout.height}`}
+              aria-hidden="true"
+            >
+              {layout.connections.map((connection) => (
+                <path
+                  key={connection.id}
+                  d={connection.d}
+                  fill="none"
+                  stroke={connection.active ? "rgba(0, 229, 143, 0.48)" : "rgba(56, 217, 255, 0.24)"}
+                  strokeWidth={connection.active ? 2 : 1.5}
+                  strokeLinecap="square"
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+              ))}
+            </svg>
+
+            {layout.rounds.map((round) => (
+              <div key={round.roundNo}>
+                <div
+                  className="absolute top-0 z-10 flex items-center justify-between gap-2"
+                  style={{ left: round.x, width: CARD_WIDTH }}
+                >
+                  <div className="min-w-0 truncate font-display text-xs font-bold uppercase tracking-wider text-accent-2">
+                    {round.label}
+                  </div>
+                  <div className="shrink-0 text-[10px] font-semibold text-ink-dim">
+                    {round.matches.length}
+                  </div>
+                </div>
+                {round.matches.map((positioned) => (
+                  <div
+                    key={positioned.match.id}
+                    className="absolute z-10"
+                    style={{ left: positioned.x, top: positioned.y }}
+                  >
+                    <MatchNode
+                      match={positioned.match}
+                      title={positioned.title}
+                      locale={locale}
+                      tournamentId={tournamentId}
+                      currentRound={currentRound}
+                    />
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

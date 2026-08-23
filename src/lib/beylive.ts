@@ -109,6 +109,55 @@ export function beyliveStreamEmbedUrl(raw: string | null | undefined, parentHost
   return null;
 }
 
+export interface BeyliveStadiumView {
+  tournament_id: string;
+  stadium_no: number;
+  label: string;
+  stream_url: string | null;
+  stream_title: string | null;
+  stream_enabled: boolean;
+}
+
+export function beyliveStadiumCount(tournament: CommunityTournament | null | undefined) {
+  const value = Number(tournament?.beylive_stadium_count ?? 2);
+  if (!Number.isFinite(value)) return 2;
+  return Math.max(1, Math.min(16, Math.trunc(value)));
+}
+
+export function beyliveStadiums(tournament: CommunityTournament | null | undefined): BeyliveStadiumView[] {
+  if (!tournament) return [];
+  const count = beyliveStadiumCount(tournament);
+  const byNo = new Map((tournament.stadiums ?? []).map((stadium) => [stadium.stadium_no, stadium]));
+
+  return Array.from({ length: count }, (_, index) => {
+    const stadiumNo = index + 1;
+    const row = byNo.get(stadiumNo);
+    const legacy =
+      stadiumNo === 1
+        ? {
+            stream_url: tournament.stadium1_stream_url,
+            stream_title: tournament.stadium1_stream_title,
+            stream_enabled: tournament.stadium1_stream_enabled,
+          }
+        : stadiumNo === 2
+          ? {
+              stream_url: tournament.stadium2_stream_url,
+              stream_title: tournament.stadium2_stream_title,
+              stream_enabled: tournament.stadium2_stream_enabled,
+            }
+          : null;
+
+    return {
+      tournament_id: tournament.id,
+      stadium_no: stadiumNo,
+      label: row?.label || `Stadium ${stadiumNo}`,
+      stream_url: row?.stream_url ?? legacy?.stream_url ?? null,
+      stream_title: row?.stream_title ?? legacy?.stream_title ?? null,
+      stream_enabled: row?.stream_enabled ?? legacy?.stream_enabled ?? false,
+    };
+  });
+}
+
 export function isBeyliveTeamTournament(tournament: CommunityTournament | null | undefined) {
   return tournament?.format === "partner";
 }
@@ -376,22 +425,18 @@ export function beyliveKnockoutRoundLabel(matchCountInRound: number) {
 }
 
 export function beyliveKnockoutRoundLabels(matches: BeyliveMatch[]) {
-  const mainRounds = [
-    ...new Set(
-      matches
-        .filter((match) => match.bracket === "main")
-        .map((match) => match.round_no),
-    ),
-  ].sort((a, b) => a - b);
+  const byRound = new Map<number, number>();
+  for (const match of matches) {
+    if (match.bracket !== "main") continue;
+    byRound.set(match.round_no, (byRound.get(match.round_no) ?? 0) + 1);
+  }
   const labels = new Map<number, string>();
 
-  mainRounds.forEach((roundNo, index) => {
-    const roundsToChampion = mainRounds.length - index;
-    if (roundsToChampion <= 1) labels.set(roundNo, "Final");
-    else if (roundsToChampion === 2) labels.set(roundNo, "Semifinal");
-    else if (roundsToChampion === 3) labels.set(roundNo, "Quarterfinal");
-    else labels.set(roundNo, `Round of ${2 ** roundsToChampion}`);
-  });
+  [...byRound.entries()]
+    .sort(([a], [b]) => a - b)
+    .forEach(([roundNo, matchCount]) => {
+      labels.set(roundNo, beyliveKnockoutRoundLabel(matchCount));
+    });
 
   return labels;
 }

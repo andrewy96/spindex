@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Locale } from "@/i18n";
 import { CommunityTournament, supabase, TOURNAMENT_SELECT } from "@/lib/supabase";
-import { beyliveFormatLabel, beyliveStatusLabel, beyliveTeamCode, beyliveTeamName } from "@/lib/beylive";
+import { beyliveFormatLabel, beyliveStadiums, beyliveStatusLabel, beyliveTeamCode, beyliveTeamName } from "@/lib/beylive";
 import { profileDisplayName } from "@/lib/profileName";
 
 function fmtWhen(iso: string, locale: Locale) {
@@ -15,10 +15,8 @@ function fmtWhen(iso: string, locale: Locale) {
 }
 
 function streamCount(item: CommunityTournament) {
-  return [
-    item.stadium1_stream_enabled && item.stadium1_stream_url,
-    item.stadium2_stream_enabled && item.stadium2_stream_url,
-  ].filter(Boolean).length || (item.stream_enabled && item.stream_url ? 1 : 0);
+  const stadiumFeeds = beyliveStadiums(item).filter((stadium) => stadium.stream_enabled && stadium.stream_url).length;
+  return stadiumFeeds || (item.stream_enabled && item.stream_url ? 1 : 0);
 }
 
 type EventScope = "all" | "live" | "upcoming" | "past";
@@ -66,6 +64,7 @@ export default function BeyliveHubClient({ locale }: { locale: Locale }) {
     const channel = supabase
       .channel("beylive-hub")
       .on("postgres_changes", { event: "*", schema: "public", table: "tournaments" }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_stadiums" }, load)
       .subscribe();
     return () => {
       supabase?.removeChannel(channel);

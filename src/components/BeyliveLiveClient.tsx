@@ -27,10 +27,12 @@ import {
   beylivePlayerCode,
   beylivePodium,
   beyliveStandings,
+  beyliveStadiums,
   beyliveStatusLabel,
   beyliveStreamEmbedUrl,
   isBeyliveByeMatch,
 } from "@/lib/beylive";
+import type { BeyliveStadiumView } from "@/lib/beylive";
 import {
   isLocalPartnerLive,
   localPartnerChampion,
@@ -110,13 +112,16 @@ function matchPrefix(match: BeyliveMatch) {
   return match.bracket === "losers" ? "3rd Place" : pool;
 }
 
-function MatchCard({ match }: { match: BeyliveMatch }) {
+function MatchCard({ match, stadiums }: { match: BeyliveMatch; stadiums: BeyliveStadiumView[] }) {
   const players = [...(match.players ?? [])].sort((a, b) => a.slot_no - b.slot_no);
   const pool = matchPrefix(match);
+  const stadiumNo = match.table_no ?? match.match_no;
+  const assignedStadium = stadiums.find((stadium) => stadium.stadium_no === stadiumNo) ?? null;
+  const liveUrl = assignedStadium?.stream_enabled && assignedStadium.stream_url ? assignedStadium.stream_url : null;
   return (
     <div className={`rounded-md border p-3 ${match.status === "live" ? "border-accent bg-accent/10" : "border-edge bg-panel"}`}>
       <div className="mb-2 flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-ink-dim">
-        <span>{pool ? `${pool} · ` : ""}Table {match.table_no ?? match.match_no} · Match {match.match_no}</span>
+        <span>{pool ? `${pool} · ` : ""}{assignedStadium?.label ?? `Stadium ${stadiumNo}`} · Match {match.match_no}</span>
         <span className={match.status === "live" ? "text-accent" : match.status === "completed" ? "text-accent-2" : ""}>
           {beyliveStatusLabel(match.status)}
         </span>
@@ -140,6 +145,16 @@ function MatchCard({ match }: { match: BeyliveMatch }) {
           );
         })}
       </div>
+      {liveUrl && (
+        <a
+          href={liveUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="clip-x mt-3 inline-flex border border-accent/50 bg-accent/10 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-accent transition hover:bg-accent/20"
+        >
+          View live
+        </a>
+      )}
     </div>
   );
 }
@@ -378,6 +393,7 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
       .on("postgres_changes", { event: "*", schema: "public", table: "beylive_matches", filter: `tournament_id=eq.${id}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_players" }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_rounds" }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_stadiums", filter: `tournament_id=eq.${id}` }, refresh)
       .subscribe((status) => {
         if (status === "SUBSCRIBED") load();
       });
@@ -417,22 +433,17 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
   const groupPools = useMemo(() => beyliveGroupPools(tournament, matches), [tournament, matches]);
   const podium = useMemo(() => beylivePodium(tournament, matches), [tournament, matches]);
   const [showPodiumModal, setShowPodiumModal] = useState(false);
+  const stadiums = useMemo(() => beyliveStadiums(tournament), [tournament]);
   const streamFeeds = useMemo<StreamFeed[]>(() => {
     if (!tournament) return [];
-    const stadiumFeeds = [
-      {
-        key: "stadium1",
-        label: "Stadium 1",
-        title: tournament.stadium1_stream_title || "Stadium 1",
-        url: tournament.stadium1_stream_enabled ? tournament.stadium1_stream_url : null,
-      },
-      {
-        key: "stadium2",
-        label: "Stadium 2",
-        title: tournament.stadium2_stream_title || "Stadium 2",
-        url: tournament.stadium2_stream_enabled ? tournament.stadium2_stream_url : null,
-      },
-    ].filter((feed) => !!feed.url);
+    const stadiumFeeds = stadiums
+      .filter((stadium) => stadium.stream_enabled && !!stadium.stream_url)
+      .map((stadium) => ({
+        key: `stadium-${stadium.stadium_no}`,
+        label: stadium.label,
+        title: stadium.stream_title || stadium.label,
+        url: stadium.stream_url,
+      }));
 
     if (stadiumFeeds.length > 0) return stadiumFeeds;
     if (tournament.stream_enabled && tournament.stream_url) {
@@ -446,7 +457,7 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
       ];
     }
     return [];
-  }, [tournament]);
+  }, [stadiums, tournament]);
   const localPartnerReady = isBeyliveTeamTournament(tournament) && matches.length === 0 && isLocalPartnerLive(localPartnerState);
   const localMode = localPartnerMode(localPartnerState);
   const localRounds = useMemo(() => localPartnerGroupedRounds(localPartnerState), [localPartnerState]);
@@ -571,7 +582,9 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
           data={
             {
               tournamentName: tournament.name,
-              dateLabel: shareDateLabel(new Date(), locale),
+              dateLabel: shareDateLabel(tournament.starts_at, locale),
+              venueLabel: [tournament.city, tournament.venue].filter(Boolean).join(" - "),
+              participantsLabel: `${(tournament.players ?? []).filter((player) => player.status === "joined").length} players`,
               url: typeof window !== "undefined" ? window.location.host : "SPINDEX",
               entries: podium.map((entry) => ({
                 place: entry.place,
@@ -658,7 +671,7 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {visibleMatches.map((match) => (
-                    <MatchCard key={match.id} match={match} />
+                    <MatchCard key={match.id} match={match} stadiums={stadiums} />
                   ))}
                 </div>
               </section>

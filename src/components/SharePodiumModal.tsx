@@ -59,7 +59,7 @@ export default function SharePodiumModal({
       if (cancelled) return;
       renderPodiumCard(canvas, card, seed);
       try {
-        const f = await canvasToPngFile(canvas, fileId);
+        const f = await canvasToPngFile(canvas, fileId, "spindex-podium");
         if (cancelled) return;
         setFile(f);
         setCanShare(typeof navigator !== "undefined" && !!navigator.canShare?.({ files: [f] }));
@@ -108,7 +108,7 @@ export default function SharePodiumModal({
       onClick={onClose}
     >
       <div
-        className="panel thin-scroll max-h-[92vh] w-full max-w-sm overflow-y-auto p-4"
+        className="panel thin-scroll max-h-[92vh] w-full max-w-xl overflow-y-auto p-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between gap-2">
@@ -127,17 +127,17 @@ export default function SharePodiumModal({
           )}
         </div>
 
-        <div className="mt-3 flex flex-wrap justify-center gap-2">
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
           <button
             onClick={() => setSeed(Math.floor(Math.random() * 0x7fffffff))}
-            className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider transition hover:border-accent-2/60 hover:text-accent-2"
+            className="clip-x whitespace-nowrap border border-edge bg-panel px-3 py-2 font-display text-[11px] font-bold tracking-wide transition hover:border-accent-2/60 hover:text-accent-2 sm:text-xs sm:tracking-wider"
           >
             🎲 Shuffle design
           </button>
           <button
             onClick={download}
             disabled={!file}
-            className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider transition enabled:hover:border-accent/60 enabled:hover:text-accent disabled:opacity-40"
+            className="clip-x whitespace-nowrap border border-edge bg-panel px-3 py-2 font-display text-[11px] font-bold tracking-wide transition enabled:hover:border-accent/60 enabled:hover:text-accent disabled:opacity-40 sm:text-xs sm:tracking-wider"
           >
             ⬇ Download
           </button>
@@ -145,7 +145,7 @@ export default function SharePodiumModal({
             <button
               onClick={share}
               disabled={!file}
-              className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+              className="clip-x whitespace-nowrap bg-accent px-3 py-2 font-display text-[11px] font-bold tracking-wide text-bg transition enabled:hover:brightness-110 disabled:opacity-50 sm:text-xs sm:tracking-wider"
             >
               ⤴ Share image
             </button>

@@ -385,6 +385,9 @@ export default function BeyliveMatchClient({
   }
 
   const beyliveMatch = match as BeyliveMatch;
+  const topScore = players.reduce((top, player) => Math.max(top, player.score), 0);
+  const leaderCount = players.filter((player) => player.score === topScore).length;
+  const targetReached = topScore >= beyliveMatch.target_score && leaderCount === 1;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -402,9 +405,9 @@ export default function BeyliveMatchClient({
           <div>
             <div className="font-display text-xs font-bold tracking-[0.28em] text-accent">BEYLIVE SCOREBOARD</div>
             <h1 className="mt-2 font-display text-2xl font-black tracking-wide">
-              {matchStageLabel(beyliveMatch)} · Table {beyliveMatch.table_no ?? beyliveMatch.match_no}
+              {matchStageLabel(beyliveMatch)} - Stadium {beyliveMatch.table_no ?? beyliveMatch.match_no}
             </h1>
-            <p className="mt-1 text-sm text-ink-dim">First to {beyliveMatch.target_score} · Match {beyliveMatch.match_no}</p>
+            <p className="mt-1 text-sm text-ink-dim">First to {beyliveMatch.target_score} - Match {beyliveMatch.match_no}</p>
           </div>
           <div className="rounded-md border border-edge bg-panel px-4 py-2 text-right">
             <div className="text-[10px] uppercase tracking-wide text-ink-dim">Status</div>
@@ -436,7 +439,7 @@ export default function BeyliveMatchClient({
                       onClick={() =>
                         player.team_id ? addTeamPoint(player.team_id, finish.key) : addPoint(player.user_id, finish.key)
                       }
-                      disabled={beyliveMatch.status === "completed" || !!busy}
+                      disabled={beyliveMatch.status === "completed" || !!busy || targetReached}
                       className="rounded-md border px-2 py-2 font-display text-[11px] font-bold tracking-wide transition enabled:hover:brightness-125 disabled:opacity-35"
                       style={{
                         borderColor: `color-mix(in srgb, ${finish.color} 45%, transparent)`,
@@ -452,6 +455,12 @@ export default function BeyliveMatchClient({
             );
           })}
         </div>
+
+        {beyliveMatch.status !== "completed" && targetReached && (
+          <p className="mt-4 rounded border border-accent/40 bg-accent/10 px-3 py-2 text-sm font-semibold text-accent">
+            Target reached. Click Complete to publish the winner and sync the live bracket.
+          </p>
+        )}
 
         <div className="mt-4 flex flex-wrap justify-center gap-2">
           <button
@@ -470,7 +479,7 @@ export default function BeyliveMatchClient({
           </button>
           <button
             onClick={complete}
-            disabled={beyliveMatch.status === "completed" || !!busy}
+            disabled={beyliveMatch.status === "completed" || !!busy || !targetReached}
             className="clip-x border border-accent-2/50 bg-accent-2/10 px-5 py-2.5 font-display text-xs font-bold tracking-wider text-accent-2 transition enabled:hover:bg-accent-2/20 disabled:opacity-40"
           >
             Complete

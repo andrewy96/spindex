@@ -64,6 +64,7 @@ function HostGuidePanel({
     { label: t.hostStartsAt, body: t.hostFieldStartsAtHelp },
     { label: t.hostMaxPlayers, body: t.hostFieldMaxPlayersHelp },
     { label: t.hostTargetScore, body: t.hostFieldTargetScoreHelp },
+    { label: t.hostStadiumCount, body: t.hostFieldStadiumCountHelp },
     { label: t.hostFormat, body: t.hostFieldFormatHelp },
     { label: t.hostNote, body: t.hostFieldNoteHelp },
   ];
@@ -158,6 +159,7 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
   const [format, setFormat] = useState<TournamentFormat>("single_elimination");
   const [maxPlayers, setMaxPlayers] = useState("16");
   const [targetScore, setTargetScore] = useState("4");
+  const [stadiumCount, setStadiumCount] = useState("2");
   const [formatConfig, setFormatConfig] = useState<TournamentFormatConfig>(() =>
     defaultTournamentFormatConfig("single_elimination", 16, 4, false),
   );
@@ -202,6 +204,7 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
   const visible = timeScope === "upcoming" ? upcoming : past;
   const maxPlayersNumber = Number(maxPlayers) || 16;
   const targetScoreNumber = Number(targetScore) || 4;
+  const stadiumCountNumber = Math.max(1, Math.min(16, Number(stadiumCount) || 2));
   const canHost =
     !!profile &&
     (isSuperadmin ||
@@ -260,6 +263,7 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
       format_config: tournamentFormatConfigForSave(formatConfig, format, maxPlayersNumber, targetScoreNumber),
       max_players: Number(maxPlayers) || 16,
       target_score: targetScoreNumber,
+      beylive_stadium_count: stadiumCountNumber,
       note: note.trim() || null,
     });
     setBusy(false);
@@ -274,6 +278,7 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
     setFormat("single_elimination");
     setMaxPlayers("16");
     setTargetScore("4");
+    setStadiumCount("2");
     setFormatConfig(defaultTournamentFormatConfig("single_elimination", 16, 4, false));
     setNote("");
     load();
@@ -419,6 +424,10 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
           <div>
             <label className="mb-1 block text-xs text-ink-dim">{t.hostTargetScore}</label>
             <input type="number" min={1} max={30} value={targetScore} onChange={(e) => changeTargetScore(e.target.value)} className={inputCls} required />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-ink-dim">{t.hostStadiumCount}</label>
+            <input type="number" min={1} max={16} value={stadiumCount} onChange={(e) => setStadiumCount(e.target.value)} className={inputCls} required />
           </div>
           <div className="sm:col-span-2">
             <label className="mb-1 block text-xs text-ink-dim">{t.hostFormat}</label>

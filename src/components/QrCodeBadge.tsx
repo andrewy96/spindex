@@ -39,18 +39,24 @@ export default function QrCodeBadge({
   }, [size, value]);
 
   return (
-    <div className="inline-flex flex-col items-center gap-1 rounded-md border border-edge bg-bg p-2">
+    <div className="inline-flex shrink-0 flex-col items-center gap-1 rounded-md border border-accent/30 bg-bg p-1.5 shadow-[0_0_16px_rgba(0,229,143,0.08)]">
       {src ? (
-        <img src={src} alt={label ?? value} width={size} height={size} className="block" />
+        <img
+          src={src}
+          alt={label ?? value}
+          width={size}
+          height={size}
+          className="block rounded border border-edge/80"
+        />
       ) : (
         <div
-          className="grid place-items-center rounded bg-panel text-[10px] text-ink-dim"
+          className="grid place-items-center rounded border border-edge bg-panel text-[10px] text-ink-dim"
           style={{ width: size, height: size }}
         >
           QR
         </div>
       )}
-      {label && <span className="font-display text-[10px] font-bold tracking-wider text-ink-dim">{label}</span>}
+      {label && <span className="font-display text-[9px] font-bold tracking-wider text-accent">{label}</span>}
     </div>
   );
 }
