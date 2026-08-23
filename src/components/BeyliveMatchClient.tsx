@@ -33,6 +33,7 @@ import {
   TeamMatch,
 } from "@/lib/beylivePartner";
 import { profileDisplayName } from "@/lib/profileName";
+import { BEYLIVE_SYNC_EVENT, beyliveSyncTopic, broadcastBeyliveRefresh } from "@/lib/beyliveRealtime";
 import QrCodeBadge from "./QrCodeBadge";
 
 const FINISHES = BEYLIVE_FINISHES;
@@ -230,15 +231,46 @@ export default function BeyliveMatchClient({
 
   useEffect(() => {
     if (!supabase) return;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const refresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        load();
+      }, 150);
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+
     const channel = supabase
       .channel(`beylive-match-${matchId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_matches", filter: `id=eq.${matchId}` }, load)
-      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_players", filter: `match_id=eq.${matchId}` }, load)
-      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_rounds", filter: `match_id=eq.${matchId}` }, load)
-      .on("postgres_changes", { event: "*", schema: "public", table: "partner_battles", filter: `tournament_id=eq.${tournamentId}` }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_matches", filter: `id=eq.${matchId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_players", filter: `match_id=eq.${matchId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_rounds", filter: `match_id=eq.${matchId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "partner_battles", filter: `tournament_id=eq.${tournamentId}` }, refresh)
       .subscribe();
+    const syncChannel = supabase
+      .channel(beyliveSyncTopic(tournamentId))
+      .on("broadcast", { event: BEYLIVE_SYNC_EVENT }, refresh)
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") load();
+      });
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", load);
+    window.addEventListener("online", load);
+    const fallbackRefresh = window.setInterval(() => {
+      if (document.visibilityState === "visible") load();
+    }, 5000);
+
     return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      window.clearInterval(fallbackRefresh);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", load);
+      window.removeEventListener("online", load);
       supabase?.removeChannel(channel);
+      supabase?.removeChannel(syncChannel);
     };
   }, [load, matchId, tournamentId]);
 
@@ -269,6 +301,7 @@ export default function BeyliveMatchClient({
       return;
     }
     load();
+    void broadcastBeyliveRefresh(supabase, tournamentId, { matchId, reason: label });
   };
 
   const addPoint = (userId: string, finish: Finish) => {
@@ -352,6 +385,7 @@ export default function BeyliveMatchClient({
     setBusy(null);
     setLocalPartnerState(nextState);
     load();
+    void broadcastBeyliveRefresh(supabase, tournamentId, { matchId, reason: "local-partner-score" });
   };
 
   if (!enabled || !supabase) {

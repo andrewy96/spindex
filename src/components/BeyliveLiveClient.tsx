@@ -49,6 +49,7 @@ import {
   TeamMatch,
 } from "@/lib/beylivePartner";
 import { profileDisplayName } from "@/lib/profileName";
+import { BEYLIVE_SYNC_EVENT, beyliveSyncTopic } from "@/lib/beyliveRealtime";
 import BeyliveBracketView from "./BeyliveBracketView";
 import SharePodiumModal from "./SharePodiumModal";
 import { PodiumCardData, shareDateLabel } from "@/lib/shareCard";
@@ -397,13 +398,19 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
       .subscribe((status) => {
         if (status === "SUBSCRIBED") load();
       });
+    const syncChannel = supabase
+      .channel(beyliveSyncTopic(id))
+      .on("broadcast", { event: BEYLIVE_SYNC_EVENT }, refresh)
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") load();
+      });
 
     document.addEventListener("visibilitychange", refreshWhenVisible);
     window.addEventListener("focus", load);
     window.addEventListener("online", load);
     const fallbackRefresh = window.setInterval(() => {
       if (document.visibilityState === "visible") load();
-    }, 8000);
+    }, 5000);
 
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer);
@@ -412,6 +419,7 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
       window.removeEventListener("focus", load);
       window.removeEventListener("online", load);
       supabase?.removeChannel(channel);
+      supabase?.removeChannel(syncChannel);
     };
   }, [id, load]);
 

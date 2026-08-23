@@ -59,6 +59,7 @@ import {
   TeamMatch,
 } from "@/lib/beylivePartner";
 import { profileDisplayName } from "@/lib/profileName";
+import { BEYLIVE_SYNC_EVENT, beyliveSyncTopic, broadcastBeyliveRefresh } from "@/lib/beyliveRealtime";
 import BeyliveScanner from "./BeyliveScanner";
 import BeyliveBracketView from "./BeyliveBracketView";
 import QrCodeBadge from "./QrCodeBadge";
@@ -790,17 +791,48 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
 
   useEffect(() => {
     if (!supabase) return;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const refresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        load();
+      }, 150);
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+
     const channel = supabase
       .channel(`beylive-control-${id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "tournaments", filter: `id=eq.${id}` }, load)
-      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_matches", filter: `tournament_id=eq.${id}` }, load)
-      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_players" }, load)
-      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_rounds" }, load)
-      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_judges", filter: `tournament_id=eq.${id}` }, load)
-      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_stadiums", filter: `tournament_id=eq.${id}` }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "tournaments", filter: `id=eq.${id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_matches", filter: `tournament_id=eq.${id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_players" }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_rounds" }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_judges", filter: `tournament_id=eq.${id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_stadiums", filter: `tournament_id=eq.${id}` }, refresh)
       .subscribe();
+    const syncChannel = supabase
+      .channel(beyliveSyncTopic(id))
+      .on("broadcast", { event: BEYLIVE_SYNC_EVENT }, refresh)
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") load();
+      });
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", load);
+    window.addEventListener("online", load);
+    const fallbackRefresh = window.setInterval(() => {
+      if (document.visibilityState === "visible") load();
+    }, 5000);
+
     return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      window.clearInterval(fallbackRefresh);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", load);
+      window.removeEventListener("online", load);
       supabase?.removeChannel(channel);
+      supabase?.removeChannel(syncChannel);
     };
   }, [id, load]);
 
@@ -1055,9 +1087,14 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
       return;
     }
     load();
+    void broadcastBeyliveRefresh(supabase, id, { reason: kind });
   };
 
-  const runScore = async (busyKey: string, fn: () => PromiseLike<{ error: { message: string } | null }>) => {
+  const runScore = async (
+    busyKey: string,
+    fn: () => PromiseLike<{ error: { message: string } | null }>,
+    matchId?: string,
+  ) => {
     if (!supabase) return;
     setScoreBusy(busyKey);
     setScoreError(null);
@@ -1068,12 +1105,13 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
       return;
     }
     load();
+    void broadcastBeyliveRefresh(supabase, id, { matchId, reason: busyKey });
   };
 
   const startMatch = (matchId: string) => {
     const client = supabase;
     if (!client) return;
-    runScore(`${matchId}:start`, () => client.rpc("start_beylive_match", { mid: matchId }));
+    runScore(`${matchId}:start`, () => client.rpc("start_beylive_match", { mid: matchId }), matchId);
   };
 
   const changeMatchStadium = (matchId: string, stadiumNo: number) => {
@@ -1081,6 +1119,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     if (!client || !isHost) return;
     runScore(`${matchId}:stadium`, () =>
       client.rpc("set_beylive_match_stadium", { mid: matchId, p_stadium_no: stadiumNo }),
+      matchId,
     );
   };
 
@@ -1089,6 +1128,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     if (!client) return;
     runScore(`${matchId}:${userId}:${finish}`, () =>
       client.rpc("record_beylive_point", { mid: matchId, player_id: userId, finish }),
+      matchId,
     );
   };
 
@@ -1097,19 +1137,20 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     if (!client) return;
     runScore(`${matchId}:${teamId}:${finish}`, () =>
       client.rpc("record_beylive_team_point", { mid: matchId, p_team_id: teamId, finish }),
+      matchId,
     );
   };
 
   const undoMatchPoint = (matchId: string) => {
     const client = supabase;
     if (!client) return;
-    runScore(`${matchId}:undo`, () => client.rpc("undo_beylive_point", { mid: matchId }));
+    runScore(`${matchId}:undo`, () => client.rpc("undo_beylive_point", { mid: matchId }), matchId);
   };
 
   const completeMatchManually = (matchId: string) => {
     const client = supabase;
     if (!client) return;
-    runScore(`${matchId}:complete`, () => client.rpc("complete_beylive_match", { mid: matchId }));
+    runScore(`${matchId}:complete`, () => client.rpc("complete_beylive_match", { mid: matchId }), matchId);
   };
 
   const saveLocalPartnerState = async (nextState: LocalPartnerState) => {
@@ -1152,6 +1193,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     }
 
     load();
+    void broadcastBeyliveRefresh(supabase, tournament.id, { reason: "local-partner-state" });
     return true;
   };
 
@@ -1223,6 +1265,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     setJudgeLookup("");
     setJudgeMessage("Judge access updated.");
     load();
+    void broadcastBeyliveRefresh(supabase, tournament.id, { reason: "judge-assign" });
   };
 
   const removeJudge = async (userId: string) => {
@@ -1259,6 +1302,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
 
     setJudgeMessage("Judge removed.");
     load();
+    void broadcastBeyliveRefresh(supabase, tournament.id, { reason: "judge-remove" });
   };
 
   const saveStream = async () => {
@@ -1328,6 +1372,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
 
     setStreamSaved(true);
     load();
+    void broadcastBeyliveRefresh(supabase, tournament.id, { reason: "stream-save" });
   };
 
   if (!enabled || !supabase) {
