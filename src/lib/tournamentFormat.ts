@@ -48,6 +48,13 @@ export interface TournamentGroupStageSettings {
   minPlayers: number;
 }
 
+export interface TournamentSwissStageSettings {
+  groups: number;
+  advanceCount: number;
+  minPlayers: number;
+  rounds: number;
+}
+
 const FORMATS: TournamentTemplateFormat[] = [
   "single_elimination",
   "double_elimination",
@@ -132,6 +139,8 @@ export function defaultTournamentFormatConfig(
   const entrants = clampInt(maxPlayers, 16, 2, 256);
   const score = clampInt(targetScore, 4, 1, 30);
   const topCut = entrants >= 32 ? 16 : entrants >= 16 ? 8 : entrants >= 8 ? 4 : 2;
+  const swissGroups = entrants >= 32 ? Math.min(8, Math.max(2, Math.ceil(entrants / 16))) : undefined;
+  const swissRoundEntrants = swissGroups ? Math.ceil(entrants / swissGroups) : entrants;
 
   const stages: TournamentFormatStage[] =
     format === "group_stage"
@@ -159,7 +168,8 @@ export function defaultTournamentFormatConfig(
           : format === "swiss"
             ? [
                 stage("swiss", "Swiss rounds", "swiss", entrants, topCut, score, {
-                  rounds: Math.ceil(Math.log2(Math.max(2, entrants))),
+                  groups: swissGroups,
+                  rounds: Math.ceil(Math.log2(Math.max(2, swissRoundEntrants))),
                   advanceRule: "points",
                 }),
                 stage("knockout", "Top cut", "knockout", topCut, 1, 7, { thirdPlace: true }),
@@ -280,6 +290,44 @@ export function tournamentGroupStageSettings(
   return {
     groups,
     advanceCount,
+    minPlayers: Math.min(players, groups * 2),
+  };
+}
+
+export function tournamentSwissStageSettings(
+  value: unknown,
+  format: TournamentTemplateFormat,
+  maxPlayers: number,
+  targetScore = 4,
+): TournamentSwissStageSettings {
+  const players = clampInt(maxPlayers, 16, 2, 256);
+  const defaultGroups = players >= 32 ? Math.min(8, Math.max(2, Math.ceil(players / 16))) : 1;
+  const defaultTopCut = players >= 32 ? 16 : players >= 16 ? 8 : players >= 8 ? 4 : 2;
+  const config = normalizeTournamentFormatConfig(value, format, players, targetScore);
+  const swissStage = config.stages.find((stage) => stage.type === "swiss") ?? config.stages[0];
+  const maxGroups = Math.min(8, Math.max(1, Math.floor(players / 2)));
+  const groups =
+    swissStage?.groups == null
+      ? defaultGroups
+      : Math.min(maxGroups, clampInt(swissStage.groups, defaultGroups, 1, 8));
+  const advanceCount = Math.min(
+    players,
+    Math.max(
+      2,
+      clampInt(swissStage?.advanceCount, Math.min(16, Math.max(2, defaultTopCut)), 1, 256),
+    ),
+  );
+  const rounds = clampInt(
+    swissStage?.rounds,
+    Math.ceil(Math.log2(Math.max(2, Math.ceil(players / Math.max(1, groups))))),
+    1,
+    16,
+  );
+
+  return {
+    groups,
+    advanceCount,
+    rounds,
     minPlayers: Math.min(players, groups * 2),
   };
 }

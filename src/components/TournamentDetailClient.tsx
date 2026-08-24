@@ -17,6 +17,7 @@ import {
   defaultTournamentFormatConfig,
   normalizeTournamentFormatConfig,
   tournamentGroupStageSettings,
+  tournamentSwissStageSettings,
   tournamentFormatConfigForSave,
   TournamentFormatConfig,
 } from "@/lib/tournamentFormat";
@@ -258,10 +259,18 @@ export default function TournamentDetailClient({
     item.format === "group_stage"
       ? tournamentGroupStageSettings(item.format_config, item.format, item.max_players, item.target_score ?? 4)
       : null;
-  const groupStageGroupCount = savedGroupStageSettings?.groups ?? 8;
-  const groupStageAdvanceCount = savedGroupStageSettings?.advanceCount ?? 16;
-  const groupStageMinPlayers = savedGroupStageSettings?.minPlayers ?? 16;
-  const poolNumbers = Array.from({ length: groupStageGroupCount }, (_, i) => i + 1);
+  const savedSwissStageSettings =
+    item.format === "swiss"
+      ? tournamentSwissStageSettings(item.format_config, item.format, item.max_players, item.target_score ?? 4)
+      : null;
+  const poolStageSettings = savedGroupStageSettings ?? savedSwissStageSettings;
+  const poolStageGroupCount = poolStageSettings?.groups ?? 8;
+  const poolStageAdvanceCount = poolStageSettings?.advanceCount ?? 16;
+  const poolStageMinPlayers = poolStageSettings?.minPlayers ?? 16;
+  const poolNumbers = Array.from({ length: poolStageGroupCount }, (_, i) => i + 1);
+  const hasPoolStageSetup =
+    item.status === "open" &&
+    (item.format === "group_stage" || (item.format === "swiss" && poolStageGroupCount > 1));
 
   const changeFormat = (next: TournamentFormat) => {
     setFormat(next);
@@ -702,7 +711,7 @@ export default function TournamentDetailClient({
                           walk-in
                         </span>
                       )}
-                      {item.format === "group_stage" && p.pool_no != null && (
+                      {(item.format === "group_stage" || item.format === "swiss") && p.pool_no != null && (
                         <span className="ml-2 rounded bg-accent/10 px-1.5 py-0.5 text-[9px] font-semibold text-accent">
                           Pool {p.pool_no}
                         </span>
@@ -745,20 +754,20 @@ export default function TournamentDetailClient({
           </div>
         </div>
 
-        {item.format === "group_stage" && item.status === "open" && (
+        {hasPoolStageSetup && (
           <div className="panel mt-6 p-5">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="font-display text-sm font-bold tracking-wider text-ink-dim">Pools</div>
                 <p className="mt-1 text-xs text-ink-dim">
-                  Splits joined players into {groupStageGroupCount} pools and advances {groupStageAdvanceCount} players after round robin. Safe to
+                  Splits joined players into {poolStageGroupCount} pools and advances {poolStageAdvanceCount} players to the top cut. Safe to
                   re-draw after adding more players — anyone already placed (including hand-moved players) stays put.
                 </p>
               </div>
               {isHost && (
                 <button
                   onClick={drawPools}
-                  disabled={rosterBusy || joined.length < groupStageMinPlayers}
+                  disabled={rosterBusy || joined.length < poolStageMinPlayers}
                   className="clip-x shrink-0 bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
                 >
                   Draw pools
@@ -816,9 +825,9 @@ export default function TournamentDetailClient({
               </div>
             ) : (
               <p className="text-sm text-ink-dim">
-                {joined.length < groupStageMinPlayers
-                  ? `Need at least ${groupStageMinPlayers} joined players to draw ${groupStageGroupCount} pools (${joined.length}/${groupStageMinPlayers}).`
-                  : `No pools drawn yet — click "Draw pools" to split the lineup into ${groupStageGroupCount} groups.`}
+                {joined.length < poolStageMinPlayers
+                  ? `Need at least ${poolStageMinPlayers} joined players to draw ${poolStageGroupCount} pools (${joined.length}/${poolStageMinPlayers}).`
+                  : `No pools drawn yet - click "Draw pools" to split the lineup into ${poolStageGroupCount} groups.`}
               </p>
             )}
           </div>

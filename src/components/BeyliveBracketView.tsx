@@ -179,17 +179,17 @@ function MatchNode({
     <Link
       href={href}
       aria-label={`${title}, table ${match.table_no ?? match.match_no}`}
-      className={`block rounded-md border p-2.5 transition hover:border-accent/70 ${matchTone(match, currentRound)}`}
+      className={`box-border block overflow-hidden rounded-md border p-2.5 transition hover:border-accent/70 ${matchTone(match, currentRound)}`}
       style={{ width: CARD_WIDTH, height: CARD_HEIGHT }}
     >
-      <div className="mb-2 grid grid-cols-[1fr_auto] items-center gap-2">
+      <div className="mb-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
         <span
           className="min-w-0 truncate font-display text-[10px] font-bold uppercase tracking-wider text-ink-dim"
           title={`Table ${match.table_no ?? match.match_no} · Match ${match.match_no}`}
         >
           {title}
         </span>
-        <span className={`text-[10px] font-bold uppercase tracking-wide ${match.status === "live" ? "text-accent" : "text-ink-dim"}`}>
+        <span className={`shrink-0 text-[10px] font-bold uppercase tracking-wide ${match.status === "live" ? "text-accent" : "text-ink-dim"}`}>
           {beyliveStatusLabel(match.status)}
         </span>
       </div>
@@ -200,7 +200,7 @@ function MatchNode({
           return (
             <div
               key={player?.team_id ?? player?.user_id ?? `empty-${index}`}
-              className={`grid min-h-10 grid-cols-[1fr_auto] items-center gap-2 rounded px-2 py-1.5 ${
+              className={`grid min-h-10 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 overflow-hidden rounded px-2 py-1.5 ${
                 won ? "bg-accent/15 text-accent" : player ? "bg-bg/80 text-ink" : "border border-dashed border-edge/80 text-ink-dim"
               }`}
             >
@@ -212,7 +212,7 @@ function MatchNode({
                   {player ? beyliveParticipantCode(player) : "TBD"}
                 </div>
               </div>
-              <div className={`font-display text-xl font-black ${won ? "text-accent" : "text-ink-dim"}`}>
+              <div className={`min-w-5 shrink-0 text-right font-display text-xl font-black ${won ? "text-accent" : "text-ink-dim"}`}>
                 {player?.score ?? "-"}
               </div>
             </div>

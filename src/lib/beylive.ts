@@ -8,6 +8,7 @@ import {
   TournamentPlayer,
 } from "./supabase";
 import { profileDisplayName } from "./profileName";
+import { normalizeTournamentFormatConfig } from "./tournamentFormat";
 
 /** The four scorable finish types, shared by every inline/standalone BEYLIVE scorer. */
 export const BEYLIVE_FINISHES: { key: Finish; label: string; color: string }[] = [
@@ -163,7 +164,7 @@ export function isBeyliveTeamTournament(tournament: CommunityTournament | null |
 }
 
 export function isBeyliveGroupStageTournament(tournament: CommunityTournament | null | undefined) {
-  return tournament?.format === "group_stage";
+  return tournament?.format === "group_stage" || tournament?.format === "swiss";
 }
 
 export function beyliveTeamCode(team: BeyliveTeam | null | undefined) {
@@ -331,6 +332,47 @@ export function beyliveStandings(
 export interface BeyliveGroupPool {
   poolNo: number;
   standings: BeyliveStanding[];
+}
+
+export interface BeylivePoolStageInfo {
+  groups: number;
+  totalAdvance: number;
+  perPoolCut: number;
+  rounds?: number;
+  label: string;
+}
+
+export function beylivePoolStageInfo(tournament: CommunityTournament | null | undefined): BeylivePoolStageInfo {
+  const players = Math.max(2, Math.min(256, Number(tournament?.max_players ?? 16) || 16));
+  const defaultAdvance = players >= 32 ? 16 : players >= 16 ? 8 : players >= 8 ? 4 : 2;
+  const poolNos = (tournament?.players ?? [])
+    .filter((player) => player.status === "joined" && player.pool_no != null)
+    .map((player) => player.pool_no as number);
+  const config = tournament
+    ? normalizeTournamentFormatConfig(tournament.format_config, tournament.format, players, tournament.target_score ?? 4)
+    : null;
+  const stage = config?.stages.find((item) =>
+    tournament?.format === "swiss" ? item.type === "swiss" : item.type === "group",
+  );
+  const configuredGroups = stage?.groups ?? (poolNos.length > 0 ? Math.max(...poolNos) : undefined);
+  const groups = Math.max(
+    1,
+    Math.min(8, configuredGroups ?? (tournament?.format === "swiss" && players >= 32 ? 2 : 1)),
+  );
+  const totalAdvance = Math.max(2, Math.min(players, stage?.advanceCount ?? defaultAdvance));
+  const perPoolCut = Math.max(1, Math.ceil(totalAdvance / groups));
+  const label =
+    groups > 1
+      ? `top ${perPoolCut} per pool / top ${totalAdvance} advance`
+      : `top ${totalAdvance} advance`;
+
+  return {
+    groups,
+    totalAdvance,
+    perPoolCut,
+    rounds: stage?.rounds,
+    label,
+  };
 }
 
 /**

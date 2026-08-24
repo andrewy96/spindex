@@ -28,6 +28,7 @@ import {
   beyliveParticipantCode,
   beyliveParticipantName,
   beyliveParticipantWon,
+  beylivePoolStageInfo,
   beylivePlayerCode,
   beyliveQrValue,
   beyliveStadiumCount,
@@ -630,6 +631,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
   const [streamToolsOpen, setStreamToolsOpen] = useState(false);
   const [idToolsOpen, setIdToolsOpen] = useState(false);
   const [bracketOverviewOpen, setBracketOverviewOpen] = useState(false);
+  const [poolStandingsOpen, setPoolStandingsOpen] = useState(true);
   const partnerCacheKey = useMemo(() => `spindex.partner-battle.${id}`, [id]);
 
   const load = useCallback(async () => {
@@ -852,6 +854,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
   const podium = useMemo(() => beylivePodium(tournament, matches), [tournament, matches]);
   const [showPodiumModal, setShowPodiumModal] = useState(false);
   const groupPools = useMemo(() => beyliveGroupPools(tournament, matches), [tournament, matches]);
+  const poolStageInfo = useMemo(() => beylivePoolStageInfo(tournament), [tournament]);
   const stadiums = useMemo(() => beyliveStadiums(tournament), [tournament]);
   const stadiumCount = beyliveStadiumCount(tournament);
   const activeStadiumStreams = stadiums.filter((stadium) => stadium.stream_enabled && stadium.stream_url).length;
@@ -935,7 +938,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     (currentJudgeStadiumNo != null && match.table_no === currentJudgeStadiumNo);
   const currentRound = tournament?.current_round ?? 1;
   const showBracketOverview =
-    !teamMode && (tournament?.format === "single_elimination" || tournament?.format === "group_stage");
+    !teamMode && (tournament?.format === "single_elimination" || tournament?.format === "group_stage" || tournament?.format === "swiss");
   const currentRoundMatches = matches.filter((match) => match.round_no === currentRound);
   const displayMatches = useMemo(() => matches.filter((match) => !isBeyliveByeMatch(match)), [matches]);
   const controlDisplayMatches = useMemo(
@@ -1753,36 +1756,54 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
 
       {groupStage && groupPools.length > 0 && (
         <section className="panel mt-4 p-5">
-          <div className="mb-3 font-display text-sm font-bold tracking-wider text-ink-dim">
-            Pool standings <span className="font-normal text-ink-dim">(top 2 advance)</span>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="font-display text-sm font-bold tracking-wider text-ink-dim">
+              Pool standings <span className="font-normal text-ink-dim">({poolStageInfo.label})</span>
+            </div>
+            <button
+              type="button"
+              aria-expanded={poolStandingsOpen}
+              aria-controls="pool-standings-grid"
+              onClick={() => setPoolStandingsOpen((open) => !open)}
+              className="clip-x border border-edge bg-panel px-3 py-2 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink"
+            >
+              {poolStandingsOpen ? "Minimize" : "Show"}
+            </button>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {groupPools.map(({ poolNo, standings }) => (
-              <div key={poolNo} className="rounded-md border border-edge bg-panel p-3">
-                <div className="mb-2 font-display text-xs font-bold tracking-wider text-accent-2">Pool {poolNo}</div>
-                <div className="grid gap-1">
-                  {standings.map((row, index) => (
-                    <div
-                      key={row.id}
-                      className={`flex items-center justify-between rounded px-2 py-1 text-xs ${
-                        index < 2 ? "bg-accent/10 text-accent" : "text-ink-dim"
-                      }`}
-                    >
-                      <span className="min-w-0 truncate">
-                        {index + 1}. {row.name}
-                      </span>
-                      <span className="ml-2 flex shrink-0 items-baseline gap-1.5 font-mono">
-                        <span>{row.wins}-{row.losses}</span>
-                        <span className="text-[0.7em] text-ink-dim">
-                          {row.diff > 0 ? `+${row.diff}` : row.diff}
+          {poolStandingsOpen ? (
+            <div id="pool-standings-grid" className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {groupPools.map(({ poolNo, standings }) => (
+                <div key={poolNo} className="rounded-md border border-edge bg-panel p-3">
+                  <div className="mb-2 font-display text-xs font-bold tracking-wider text-accent-2">Pool {poolNo}</div>
+                  <div className="grid gap-1">
+                    {standings.map((row, index) => (
+                      <div
+                        key={row.id}
+                        className={`flex items-center justify-between rounded px-2 py-1 text-xs ${
+                          index < poolStageInfo.perPoolCut ? "bg-accent/10 text-accent" : "text-ink-dim"
+                        }`}
+                      >
+                        <span className="min-w-0 truncate">
+                          {index + 1}. {row.name}
                         </span>
-                      </span>
-                    </div>
-                  ))}
+                        <span className="ml-2 flex shrink-0 items-baseline gap-1.5 font-mono">
+                          <span>{row.wins}-{row.losses}</span>
+                          <span className="text-[0.7em] text-ink-dim">
+                            {row.diff > 0 ? `+${row.diff}` : row.diff}
+                          </span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-ink-dim">
+              <span className="rounded bg-panel px-2 py-1">Standings minimized</span>
+              <span className="rounded bg-panel px-2 py-1">{groupPools.length} pools</span>
+            </div>
+          )}
         </section>
       )}
 
