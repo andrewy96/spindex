@@ -34,11 +34,13 @@ import {
 } from "@/lib/beylivePartner";
 import { profileDisplayName } from "@/lib/profileName";
 import { BEYLIVE_SYNC_EVENT, beyliveSyncTopic, broadcastBeyliveRefresh } from "@/lib/beyliveRealtime";
+import { canAccessBeyliveControl } from "@/lib/beyliveAccess";
 import QrCodeBadge from "./QrCodeBadge";
 
 const FINISHES = BEYLIVE_FINISHES;
 
 type FormatAwareBeyliveMatch = BeyliveMatch & { tournament_format?: TournamentFormat | null };
+type MatchTournamentAccess = { host: string; format: TournamentFormat | null };
 
 function matchStageLabel(match: BeyliveMatch, tournamentFormat?: TournamentFormat | null) {
   const format = tournamentFormat ?? (match as FormatAwareBeyliveMatch).tournament_format ?? null;
@@ -195,6 +197,8 @@ export default function BeyliveMatchClient({
 }) {
   const { enabled, profile } = useAuth();
   const [match, setMatch] = useState<BeyliveMatch | null>(null);
+  const [tournamentAccess, setTournamentAccess] = useState<MatchTournamentAccess | null>(null);
+  const [judgeRole, setJudgeRole] = useState<string | null>(null);
   const [localPartnerState, setLocalPartnerState] = useState<LocalPartnerState | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -202,7 +206,7 @@ export default function BeyliveMatchClient({
 
   const load = useCallback(async () => {
     if (!supabase) return;
-    const [{ data }, { data: partnerData }, { data: tournamentData }] = await Promise.all([
+    const [{ data }, { data: partnerData }, { data: tournamentData }, { data: judgeData }] = await Promise.all([
       supabase
         .from("beylive_matches")
         .select(BEYLIVE_MATCH_SELECT)
@@ -215,15 +219,32 @@ export default function BeyliveMatchClient({
         .maybeSingle(),
       supabase
         .from("tournaments")
-        .select("format")
+        .select("host,format")
         .eq("id", tournamentId)
         .maybeSingle(),
+      profile?.id
+        ? supabase
+            .from("beylive_judges")
+            .select("role")
+            .eq("tournament_id", tournamentId)
+            .eq("user_id", profile.id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
     const format = (tournamentData?.format as TournamentFormat | undefined) ?? null;
+    setTournamentAccess(
+      tournamentData
+        ? {
+            host: String(tournamentData.host),
+            format,
+          }
+        : null,
+    );
+    setJudgeRole((judgeData as { role?: string } | null)?.role ?? null);
     setMatch(data ? ({ ...(data as unknown as BeyliveMatch), tournament_format: format } as FormatAwareBeyliveMatch) : null);
     setLocalPartnerState((partnerData?.state as LocalPartnerState | undefined) ?? null);
     setLoading(false);
-  }, [matchId, tournamentId]);
+  }, [matchId, profile?.id, tournamentId]);
 
   useEffect(() => {
     load();
@@ -287,11 +308,13 @@ export default function BeyliveMatchClient({
     () => (!match ? localMatches.find((item) => item.id === matchId) ?? null : null),
     [localMatches, match, matchId],
   );
+  const canSeeBeyliveControl = canAccessBeyliveControl(profile, tournamentAccess, judgeRole);
 
   const run = async (
     label: string,
     fn: () => PromiseLike<{ error: { message: string } | null }>,
   ) => {
+    if (!canSeeBeyliveControl) return;
     setBusy(label);
     setError(null);
     const { error: err } = await fn();
@@ -347,7 +370,7 @@ export default function BeyliveMatchClient({
   };
 
   const reportLocalPartnerMatch = async (scores: Record<string, number>) => {
-    if (!supabase || !localPartnerState || !localMatch) return;
+    if (!supabase || !localPartnerState || !localMatch || !canSeeBeyliveControl) return;
 
     const nextState = scoreLocalPartnerMatch(localPartnerState, localMatch.id, scores);
     if (!nextState) {
@@ -393,6 +416,23 @@ export default function BeyliveMatchClient({
   }
   if (loading) return <p className="py-16 text-center text-sm text-ink-dim">Loading match...</p>;
   if (!match && !localMatch) return <p className="py-16 text-center text-sm text-ink-dim">Match not found.</p>;
+  if (!canSeeBeyliveControl) {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <div className="mb-5 flex flex-wrap items-center gap-2">
+          <Link href={`/${locale}/tournaments/${tournamentId}/live`} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
+            Public Live
+          </Link>
+        </div>
+        <div className="panel border-bal/40 p-5">
+          <div className="font-display text-sm font-bold tracking-wider text-bal">BEYLIVE Control restricted</div>
+          <p className="mt-2 text-sm text-ink-dim">
+            Only the approved tournament host or a BEYLIVE judge can access this match control page.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (!match && localMatch && localPartnerState) {
     return (

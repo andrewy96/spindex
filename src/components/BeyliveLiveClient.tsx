@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Locale } from "@/i18n";
+import { useAuth } from "@/lib/auth";
 import {
   BEYLIVE_MATCH_SELECT,
   BeyliveMatch,
@@ -51,6 +52,7 @@ import {
 } from "@/lib/beylivePartner";
 import { profileDisplayName } from "@/lib/profileName";
 import { BEYLIVE_SYNC_EVENT, beyliveSyncTopic } from "@/lib/beyliveRealtime";
+import { canAccessBeyliveControl } from "@/lib/beyliveAccess";
 import BeyliveBracketView from "./BeyliveBracketView";
 import SharePodiumModal from "./SharePodiumModal";
 import { PodiumCardData, shareDateLabel } from "@/lib/shareCard";
@@ -282,6 +284,7 @@ function StreamPanel({ feeds, hostName }: { feeds: StreamFeed[]; hostName: strin
 }
 
 export default function BeyliveLiveClient({ id, locale }: { id: string; locale: Locale }) {
+  const { profile } = useAuth();
   const [tournament, setTournament] = useState<CommunityTournament | null>(null);
   const [matches, setMatches] = useState<BeyliveMatch[]>([]);
   const [localPartnerState, setLocalPartnerState] = useState<LocalPartnerState | null>(null);
@@ -469,7 +472,8 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
     }
     return [];
   }, [stadiums, tournament]);
-  const localPartnerReady = isBeyliveTeamTournament(tournament) && matches.length === 0 && isLocalPartnerLive(localPartnerState);
+  const teamEvent = isBeyliveTeamTournament(tournament);
+  const localPartnerReady = tournament?.format === "partner" && matches.length === 0 && isLocalPartnerLive(localPartnerState);
   const localMode = localPartnerMode(localPartnerState);
   const localRounds = useMemo(() => localPartnerGroupedRounds(localPartnerState), [localPartnerState]);
   const localTeams = useMemo(() => localPartnerTeams(localPartnerState), [localPartnerState]);
@@ -477,7 +481,7 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
   const localConsolationId = localPartnerConsolationChampion(localPartnerState);
   const localChampion = localChampionId ? localTeams.find((team) => team.id === localChampionId) : null;
   const localConsolation = localConsolationId ? localTeams.find((team) => team.id === localConsolationId) : null;
-  const teamMode = isBeyliveTeamTournament(tournament) && ((tournament?.teams?.length ?? 0) > 0 || localPartnerReady);
+  const teamMode = teamEvent && ((tournament?.teams?.length ?? 0) > 0 || localPartnerReady);
   const showBracketOverview =
     !teamMode && (tournament?.format === "single_elimination" || tournament?.format === "group_stage" || tournament?.format === "swiss");
   const teams = useMemo(
@@ -516,6 +520,7 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
   }
   if (loading) return <p className="py-16 text-center text-sm text-ink-dim">Loading BEYLIVE...</p>;
   if (!tournament) return <p className="py-16 text-center text-sm text-ink-dim">Tournament not found.</p>;
+  const canSeeBeyliveControl = canAccessBeyliveControl(profile, tournament);
 
   return (
     <div>
@@ -523,9 +528,11 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
         <Link href={`/${locale}/tournaments/${id}`} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
           Back to tournament
         </Link>
-        <Link href={`/${locale}/tournaments/${id}/control`} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
-          BEYLIVE Control
-        </Link>
+        {canSeeBeyliveControl && (
+          <Link href={`/${locale}/tournaments/${id}/control`} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
+            BEYLIVE Control
+          </Link>
+        )}
       </div>
 
       <section className="panel bg-grid p-5">
@@ -595,7 +602,9 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
               tournamentName: tournament.name,
               dateLabel: shareDateLabel(tournament.starts_at, locale),
               venueLabel: [tournament.city, tournament.venue].filter(Boolean).join(" - "),
-              participantsLabel: `${(tournament.players ?? []).filter((player) => player.status === "joined").length} players`,
+              participantsLabel: `${(tournament.players ?? []).filter((player) => player.status === "joined").length} ${
+                teamEvent ? "teams" : "players"
+              }`,
               url: typeof window !== "undefined" ? window.location.host : "SPINDEX",
               entries: podium.map((entry) => ({
                 place: entry.place,
@@ -710,14 +719,14 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
 
         <aside className="panel h-fit p-5">
           <div className="mb-3 font-display text-sm font-bold tracking-wider text-ink-dim">
-            {teamMode ? "Team standings" : "Live standings"}
+            {teamEvent ? "Team standings" : "Live standings"}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-ink-dim">
                   <th className="py-1 pr-2 text-left font-medium">ID</th>
-                  <th className="py-1 pr-2 text-left font-medium">{teamMode ? "Team" : "Player"}</th>
+                  <th className="py-1 pr-2 text-left font-medium">{teamEvent ? "Team" : "Player"}</th>
                   <th className="py-1 pr-2 text-right font-medium">W-L</th>
                   <th className="py-1 text-right font-medium">Diff</th>
                 </tr>
@@ -741,7 +750,7 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
           </div>
           <div className="mt-4 rounded-md border border-edge bg-bg p-3">
             <div className="font-display text-xs font-bold tracking-wider text-ink-dim">
-              {teamMode ? "Team IDs" : "Player IDs"}
+              {teamEvent ? "Team IDs" : "Player IDs"}
             </div>
             {localPartnerReady ? (
               <ol className="mt-2 space-y-1 text-xs text-ink-dim">

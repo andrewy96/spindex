@@ -8,16 +8,28 @@ import {
   CommunityTournament,
   MY_CITIES,
   supabase,
+  TournamentEventType,
   TournamentFormat,
 } from "@/lib/supabase";
 import { profileDisplayName } from "@/lib/profileName";
 import TournamentFormatDesigner, { TournamentFormatSummary } from "./TournamentFormatDesigner";
+import TournamentRegistrationSettings from "./TournamentRegistrationSettings";
 import {
   defaultTournamentFormatConfig,
   normalizeTournamentFormatConfig,
   tournamentFormatConfigForSave,
   TournamentFormatConfig,
 } from "@/lib/tournamentFormat";
+import {
+  DEFAULT_TOURNAMENT_REGISTRATION_CONFIG,
+  tournamentRegistrationConfigForSave,
+  TournamentRegistrationConfig,
+} from "@/lib/tournamentRegistration";
+import {
+  inferTournamentEventType,
+  registrationConfigForEventType,
+  tournamentUsesTeamEntrants,
+} from "@/lib/tournamentEvent";
 
 const inputCls =
   "w-full rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent";
@@ -62,6 +74,7 @@ function HostGuidePanel({
     { label: t.hostCity, body: t.hostFieldCityHelp },
     { label: t.hostVenue, body: t.hostFieldVenueHelp },
     { label: t.hostStartsAt, body: t.hostFieldStartsAtHelp },
+    { label: t.hostEventType, body: t.hostFieldEventTypeHelp },
     { label: t.hostMaxPlayers, body: t.hostFieldMaxPlayersHelp },
     { label: t.hostTargetScore, body: t.hostFieldTargetScoreHelp },
     { label: t.hostStadiumCount, body: t.hostFieldStadiumCountHelp },
@@ -156,12 +169,16 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
   const [city, setCity] = useState("Kuala Lumpur");
   const [venue, setVenue] = useState("");
   const [startsAt, setStartsAt] = useState("");
+  const [eventType, setEventType] = useState<TournamentEventType>("team");
   const [format, setFormat] = useState<TournamentFormat>("single_elimination");
   const [maxPlayers, setMaxPlayers] = useState("16");
   const [targetScore, setTargetScore] = useState("4");
   const [stadiumCount, setStadiumCount] = useState("2");
   const [formatConfig, setFormatConfig] = useState<TournamentFormatConfig>(() =>
     defaultTournamentFormatConfig("single_elimination", 16, 4, false),
+  );
+  const [registrationConfig, setRegistrationConfig] = useState<TournamentRegistrationConfig>(
+    DEFAULT_TOURNAMENT_REGISTRATION_CONFIG,
   );
   const [note, setNote] = useState("");
 
@@ -205,13 +222,24 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
   const maxPlayersNumber = Number(maxPlayers) || 16;
   const targetScoreNumber = Number(targetScore) || 4;
   const stadiumCountNumber = Math.max(1, Math.min(16, Number(stadiumCount) || 2));
+  const effectiveEventType: TournamentEventType = format === "partner" ? "team" : eventType;
+  const formatEntrantLabel =
+    tournamentUsesTeamEntrants(effectiveEventType, format) ? t.formatEntrantsTeams : undefined;
   const canHost =
     !!profile &&
     (isSuperadmin ||
       (!!profile.approved_host && !profile.is_walkin && !profile.admin_deleted_at));
 
+  const changeEventType = (next: TournamentEventType) => {
+    setEventType(next);
+    setRegistrationConfig((current) => registrationConfigForEventType(current, next));
+  };
+
   const changeFormat = (next: TournamentFormat) => {
     setFormat(next);
+    if (next === "partner") {
+      changeEventType("team");
+    }
     setFormatConfig((current) =>
       defaultTournamentFormatConfig(next, maxPlayersNumber, targetScoreNumber, current.enabled),
     );
@@ -260,10 +288,14 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
       venue: venue.trim(),
       starts_at: new Date(startsAt).toISOString(),
       format,
+      event_type: effectiveEventType,
       format_config: tournamentFormatConfigForSave(formatConfig, format, maxPlayersNumber, targetScoreNumber),
       max_players: Number(maxPlayers) || 16,
       target_score: targetScoreNumber,
       beylive_stadium_count: stadiumCountNumber,
+      registration_config: tournamentRegistrationConfigForSave(
+        registrationConfigForEventType(registrationConfig, effectiveEventType),
+      ),
       note: note.trim() || null,
     });
     setBusy(false);
@@ -275,27 +307,20 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
     setName("");
     setVenue("");
     setStartsAt("");
+    setEventType("team");
     setFormat("single_elimination");
     setMaxPlayers("16");
     setTargetScore("4");
     setStadiumCount("2");
     setFormatConfig(defaultTournamentFormatConfig("single_elimination", 16, 4, false));
+    setRegistrationConfig(DEFAULT_TOURNAMENT_REGISTRATION_CONFIG);
     setNote("");
     load();
   };
 
-  const join = async (item: CommunityTournament) => {
-    if (!supabase || !profile) return;
-    setBusy(true);
-    setError(null);
-    const { error: err } = await supabase.rpc("join_tournament", { tid: item.id });
-    setBusy(false);
-    if (err) setError(t.hostError);
-    else load();
-  };
-
   const leave = async (item: CommunityTournament) => {
     if (!supabase || !profile) return;
+    if (!window.confirm(t.leaveConfirm)) return;
     setBusy(true);
     await supabase.rpc("leave_tournament", { tid: item.id });
     setBusy(false);
@@ -417,6 +442,32 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
             <label className="mb-1 block text-xs text-ink-dim">{t.hostStartsAt}</label>
             <input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className={inputCls} required />
           </div>
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs text-ink-dim">{t.hostEventType}</label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {(["player", "team"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => changeEventType(option)}
+                  disabled={format === "partner" && option === "player"}
+                  className={`rounded-md border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    effectiveEventType === option
+                      ? "border-accent bg-accent/10"
+                      : "border-edge bg-panel hover:border-accent/50"
+                  }`}
+                >
+                  <div className={`text-sm font-semibold ${effectiveEventType === option ? "text-accent" : "text-ink"}`}>
+                    {option === "team" ? t.hostEventTypeTeam : t.hostEventTypePlayer}
+                  </div>
+                  <div className="mt-1 text-xs leading-relaxed text-ink-dim">
+                    {option === "team" ? t.hostEventTypeTeamDesc : t.hostEventTypePlayerDesc}
+                  </div>
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[11px] text-ink-dim">{t.hostEventTypeHelp}</p>
+          </div>
           <div>
             <label className="mb-1 block text-xs text-ink-dim">{t.hostMaxPlayers}</label>
             <input type="number" min={2} max={256} value={maxPlayers} onChange={(e) => changeMaxPlayers(e.target.value)} className={inputCls} required />
@@ -458,6 +509,12 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
             maxPlayers={maxPlayersNumber}
             targetScore={targetScoreNumber}
             labels={t}
+            entrantLabel={formatEntrantLabel}
+          />
+          <TournamentRegistrationSettings
+            value={registrationConfigForEventType(registrationConfig, effectiveEventType)}
+            onChange={(next) => setRegistrationConfig(registrationConfigForEventType(next, effectiveEventType))}
+            labels={t}
           />
           <div className="sm:col-span-2">
             <label className="mb-1 block text-xs text-ink-dim">{t.hostNote}</label>
@@ -489,6 +546,12 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
             const mine = profile ? players.find((p) => p.user_id === profile.id) : null;
             const isHost = profile?.id === item.host;
             const past = isPast(item);
+            const full = joined.length >= item.max_players;
+            const itemEventType = inferTournamentEventType(item);
+            const itemEntrantLabel =
+              tournamentUsesTeamEntrants(itemEventType, item.format)
+                ? t.formatEntrantsTeams
+                : undefined;
             const statusLabel =
               item.status === "cancelled"
                 ? t.statusCancelled
@@ -515,6 +578,9 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
                     <span className="rounded-full bg-accent-2/10 px-2 py-0.5 text-[10px] font-semibold text-accent-2">
                       {formatLabel(item.format)}
                     </span>
+                    <span className="rounded-full bg-panel px-2 py-0.5 text-[10px] font-semibold text-ink-dim">
+                      {itemEventType === "team" ? t.hostEventTypeTeam : t.hostEventTypePlayer}
+                    </span>
                     {statusLabel && (
                       <span
                         className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
@@ -535,6 +601,7 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
                   maxPlayers={item.max_players}
                   targetScore={item.target_score ?? 4}
                   labels={t}
+                  entrantLabel={itemEntrantLabel}
                   compact
                 />
                 <div className="flex flex-wrap gap-1.5 text-[10px] font-semibold">
@@ -584,10 +651,14 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
                     <button onClick={() => cancel(item)} disabled={busy || item.status !== "open"} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink disabled:opacity-50">
                       {t.cancel}
                     </button>
+                  ) : item.status === "open" && !past && full ? (
+                    <span className="clip-x border border-atk/40 bg-atk/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-atk">
+                      {t.tournamentFull}
+                    </span>
                   ) : item.status === "open" && !past ? (
-                    <button onClick={() => join(item)} disabled={busy} className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110 disabled:opacity-50">
-                      {t.joinTournament}
-                    </button>
+                    <Link href={`/${locale}/tournaments/${item.id}/register`} className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110">
+                      {t.registerTournament}
+                    </Link>
                   ) : null}
                   {isSuperadmin && (
                     <button

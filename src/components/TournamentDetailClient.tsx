@@ -7,12 +7,16 @@ import { useAuth } from "@/lib/auth";
 import {
   CommunityTournament,
   MY_CITIES,
+  Profile,
   supabase,
+  TournamentEventType,
   TournamentFormat,
+  TournamentRegistration,
 } from "@/lib/supabase";
 import { profileDisplayName } from "@/lib/profileName";
 import PartnerBattleRunner from "@/components/PartnerBattleRunner";
 import TournamentFormatDesigner, { TournamentFormatSummary } from "@/components/TournamentFormatDesigner";
+import TournamentRegistrationSettings from "@/components/TournamentRegistrationSettings";
 import {
   defaultTournamentFormatConfig,
   normalizeTournamentFormatConfig,
@@ -21,6 +25,21 @@ import {
   tournamentFormatConfigForSave,
   TournamentFormatConfig,
 } from "@/lib/tournamentFormat";
+import {
+  checkTournamentRegistrationProof,
+  normalizeTournamentRegistrationConfig,
+  tournamentRegistrationConfigForSave,
+  tournamentRegistrationProofExtension,
+  TournamentRegistrationConfig,
+  TOURNAMENT_REGISTRATION_PROOF_ACCEPT,
+  TOURNAMENT_REGISTRATION_PROOF_BUCKET,
+} from "@/lib/tournamentRegistration";
+import { canAccessBeyliveControl } from "@/lib/beyliveAccess";
+import {
+  inferTournamentEventType,
+  registrationConfigForEventType,
+  tournamentUsesTeamEntrants,
+} from "@/lib/tournamentEvent";
 
 const inputCls =
   "w-full rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent";
@@ -140,6 +159,19 @@ export default function TournamentDetailClient({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [partnerRoster, setPartnerRoster] = useState<{ id: string; name: string }[]>([]);
+  const [registrations, setRegistrations] = useState<TournamentRegistration[]>([]);
+  const [hostRegisterQuery, setHostRegisterQuery] = useState("");
+  const [hostRegisterMatches, setHostRegisterMatches] = useState<Profile[]>([]);
+  const [hostRegisterProfile, setHostRegisterProfile] = useState<Profile | null>(null);
+  const [hostRegisterExisting, setHostRegisterExisting] = useState<TournamentRegistration | null>(null);
+  const [hostRegisterEmail, setHostRegisterEmail] = useState("");
+  const [hostRegisterContactNumber, setHostRegisterContactNumber] = useState("");
+  const [hostRegisterTeamName, setHostRegisterTeamName] = useState("");
+  const [hostRegisterProofFile, setHostRegisterProofFile] = useState<File | null>(null);
+  const [hostRegisterCustomAnswers, setHostRegisterCustomAnswers] = useState<Record<string, string>>({});
+  const [hostRegisterBusy, setHostRegisterBusy] = useState(false);
+  const [hostRegisterError, setHostRegisterError] = useState<string | null>(null);
+  const [hostRegisterSuccess, setHostRegisterSuccess] = useState<string | null>(null);
   const [walkinName, setWalkinName] = useState("");
   const [rosterBusy, setRosterBusy] = useState(false);
   const [rosterError, setRosterError] = useState<string | null>(null);
@@ -150,12 +182,16 @@ export default function TournamentDetailClient({
   const [city, setCity] = useState("Kuala Lumpur");
   const [venue, setVenue] = useState("");
   const [startsAt, setStartsAt] = useState("");
+  const [eventType, setEventType] = useState<TournamentEventType>("team");
   const [format, setFormat] = useState<TournamentFormat>("single_elimination");
   const [maxPlayers, setMaxPlayers] = useState("16");
   const [targetScore, setTargetScore] = useState("4");
   const [stadiumCount, setStadiumCount] = useState("2");
   const [formatConfig, setFormatConfig] = useState<TournamentFormatConfig>(() =>
     defaultTournamentFormatConfig("single_elimination", 16, 4, false),
+  );
+  const [registrationConfig, setRegistrationConfig] = useState<TournamentRegistrationConfig>(() =>
+    normalizeTournamentRegistrationConfig(null),
   );
   const [note, setNote] = useState("");
 
@@ -179,11 +215,13 @@ export default function TournamentDetailClient({
     setCity(next.city);
     setVenue(next.venue);
     setStartsAt(toDateTimeInput(next.starts_at));
+    setEventType(inferTournamentEventType(next));
     setFormat(next.format);
     setMaxPlayers(String(next.max_players));
     setTargetScore(String(next.target_score ?? 4));
     setStadiumCount(String(next.beylive_stadium_count ?? 2));
     setFormatConfig(normalizeTournamentFormatConfig(next.format_config, next.format, next.max_players, next.target_score ?? 4));
+    setRegistrationConfig(normalizeTournamentRegistrationConfig(next.registration_config));
     setNote(next.note ?? "");
   };
 
@@ -203,11 +241,70 @@ export default function TournamentDetailClient({
     const next = (data as unknown as CommunityTournament | null) ?? null;
     setItem(next);
     if (next) fillForm(next);
-  }, [id, t.hostError]);
+
+    if (profile) {
+      const { data: regData } = await supabase
+        .from("tournament_registrations")
+        .select("*, profile:profiles!tournament_registrations_user_id_fkey(*)")
+        .eq("tournament_id", id)
+        .order("created_at", { ascending: true });
+      setRegistrations((regData as unknown as TournamentRegistration[]) ?? []);
+    } else {
+      setRegistrations([]);
+    }
+  }, [id, profile, t.hostError]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const client = supabase;
+    const hostReady = !!item && profile?.id === item.host;
+    const raw = hostRegisterQuery.trim();
+    const selectedQuery = hostRegisterProfile
+      ? hostRegisterProfile.player_code || `@${hostRegisterProfile.handle}`
+      : "";
+    if (!client || !hostReady || raw.length < 2 || raw === selectedQuery) {
+      setHostRegisterMatches([]);
+      return;
+    }
+
+    const term = raw
+      .replace(/^@/, "")
+      .replace(/[,%()]/g, " ")
+      .trim()
+      .replace(/\s+/g, "%");
+    if (term.length < 2) {
+      setHostRegisterMatches([]);
+      return;
+    }
+
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      const pattern = `%${term}%`;
+      const { data } = await client
+        .from("profiles")
+        .select("*")
+        .or(`player_code.ilike.${pattern},handle.ilike.${pattern},display_name.ilike.${pattern}`)
+        .eq("is_walkin", false)
+        .is("admin_deleted_at", null)
+        .order("display_name", { ascending: true })
+        .limit(50);
+
+      if (!active) return;
+      setHostRegisterMatches(
+        ((data as unknown as Profile[] | null) ?? []).filter(
+          (target) => !target.is_walkin && !target.admin_deleted_at,
+        ),
+      );
+    }, 250);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [hostRegisterProfile, hostRegisterQuery, item, profile?.id]);
 
   // Partner tournaments track their roster in partner_battles (walk-in names,
   // not accounts), so mirror that count/lineup into the header — kept live.
@@ -251,7 +348,27 @@ export default function TournamentDetailClient({
   const waitlisted = players.filter((p) => p.status === "waitlisted");
   const mine = profile ? players.find((p) => p.user_id === profile.id) : null;
   const isHost = profile?.id === item.host;
+  const canSeeBeyliveControl = canAccessBeyliveControl(profile, item);
+  const joinedEntryCount = joined.length;
+  const full = joinedEntryCount >= item.max_players;
+  const hostRegisterSelectedPlayer = hostRegisterProfile
+    ? players.find((player) => player.user_id === hostRegisterProfile.id)
+    : null;
+  const hostRegisterFullBlocked = !!hostRegisterProfile && !hostRegisterSelectedPlayer && full;
   const formatLabel = formats.find((f) => f.key === item.format)?.label ?? item.format;
+  const detailRegistrationConfig = normalizeTournamentRegistrationConfig(item.registration_config);
+  const detailEventType = inferTournamentEventType(item);
+  const detailEntrantLabel =
+    tournamentUsesTeamEntrants(detailEventType, item.format)
+      ? t.formatEntrantsTeams
+      : undefined;
+  const poolEntrantLabel = detailEntrantLabel ? "teams" : "players";
+  const poolPlacedLabel = detailEntrantLabel ? "any team" : "anyone";
+  const editEventType: TournamentEventType = format === "partner" ? "team" : eventType;
+  const editEntrantLabel =
+    tournamentUsesTeamEntrants(editEventType, format)
+      ? t.formatEntrantsTeams
+      : undefined;
   const maxPlayersNumber = Number(maxPlayers) || 16;
   const targetScoreNumber = Number(targetScore) || 4;
   const stadiumCountNumber = Math.max(1, Math.min(16, Number(stadiumCount) || 2));
@@ -272,8 +389,16 @@ export default function TournamentDetailClient({
     item.status === "open" &&
     (item.format === "group_stage" || (item.format === "swiss" && poolStageGroupCount > 1));
 
+  const changeEventType = (next: TournamentEventType) => {
+    setEventType(next);
+    setRegistrationConfig((current) => registrationConfigForEventType(current, next));
+  };
+
   const changeFormat = (next: TournamentFormat) => {
     setFormat(next);
+    if (next === "partner") {
+      changeEventType("team");
+    }
     setFormatConfig((current) =>
       defaultTournamentFormatConfig(next, maxPlayersNumber, targetScoreNumber, current.enabled),
     );
@@ -305,18 +430,9 @@ export default function TournamentDetailClient({
     window.setTimeout(() => setCopied(false), 1600);
   };
 
-  const join = async () => {
-    if (!supabase || !profile) return;
-    setBusy(true);
-    setError(null);
-    const { error: err } = await supabase.rpc("join_tournament", { tid: item.id });
-    setBusy(false);
-    if (err) setError(t.hostError);
-    else load();
-  };
-
   const leave = async () => {
     if (!supabase || !profile) return;
+    if (!window.confirm(t.leaveConfirm)) return;
     setBusy(true);
     await supabase.rpc("leave_tournament", { tid: item.id });
     setBusy(false);
@@ -469,10 +585,14 @@ export default function TournamentDetailClient({
         venue: venue.trim(),
         starts_at: new Date(startsAt).toISOString(),
         format,
+        event_type: editEventType,
         format_config: tournamentFormatConfigForSave(formatConfig, format, maxPlayersNumber, targetScoreNumber),
         max_players: Number(maxPlayers) || 16,
         target_score: targetScoreNumber,
         beylive_stadium_count: stadiumCountNumber,
+        registration_config: tournamentRegistrationConfigForSave(
+          registrationConfigForEventType(registrationConfig, editEventType),
+        ),
         note: note.trim() || null,
       })
       .eq("id", item.id);
@@ -483,6 +603,294 @@ export default function TournamentDetailClient({
     }
     setEditing(false);
     load();
+  };
+
+  const fillHostRegistrationForm = (
+    target: Profile,
+    registration: TournamentRegistration | null,
+  ) => {
+    setHostRegisterProfile(target);
+    setHostRegisterExisting(registration);
+    setHostRegisterEmail(registration?.email ?? "");
+    setHostRegisterContactNumber(registration?.contact_number ?? "");
+    setHostRegisterTeamName(registration?.team_name ?? "");
+    setHostRegisterProofFile(null);
+    setHostRegisterCustomAnswers(
+      Object.fromEntries(
+        detailRegistrationConfig.customFields.map((field) => [
+          field.id,
+          registration?.custom_answers?.[field.id] ?? "",
+        ]),
+      ),
+    );
+  };
+
+  const readHostRegistration = async (targetId: string) => {
+    if (!supabase) return null;
+    const { data } = await supabase
+      .from("tournament_registrations")
+      .select("*, profile:profiles!tournament_registrations_user_id_fkey(*)")
+      .eq("tournament_id", item.id)
+      .eq("user_id", targetId)
+      .maybeSingle();
+    return (data as unknown as TournamentRegistration | null) ?? null;
+  };
+
+  const clearHostRegistrationSelection = () => {
+    setHostRegisterProfile(null);
+    setHostRegisterExisting(null);
+    setHostRegisterEmail("");
+    setHostRegisterContactNumber("");
+    setHostRegisterTeamName("");
+    setHostRegisterProofFile(null);
+    setHostRegisterCustomAnswers({});
+  };
+
+  const selectHostRegistrationPlayer = async (target: Profile) => {
+    if (target.is_walkin || target.admin_deleted_at) {
+      setHostRegisterError(t.registrationPlayerInvalid);
+      return;
+    }
+
+    setHostRegisterBusy(true);
+    setHostRegisterError(null);
+    setHostRegisterSuccess(null);
+    const registration = await readHostRegistration(target.id);
+    fillHostRegistrationForm(target, registration);
+    setHostRegisterQuery(target.player_code || `@${target.handle}`);
+    setHostRegisterMatches([]);
+    setHostRegisterBusy(false);
+  };
+
+  const findHostRegistrationPlayer = async () => {
+    const client = supabase;
+    if (!client || !isHost) return;
+    const raw = hostRegisterQuery.trim();
+    if (!raw) {
+      setHostRegisterError(t.registrationPlayerRequired);
+      return;
+    }
+
+    setHostRegisterBusy(true);
+    setHostRegisterError(null);
+    setHostRegisterSuccess(null);
+    clearHostRegistrationSelection();
+
+    const term = raw
+      .replace(/^@/, "")
+      .replace(/[,%()]/g, " ")
+      .trim()
+      .replace(/\s+/g, "%");
+    if (!term) {
+      setHostRegisterBusy(false);
+      setHostRegisterError(t.registrationPlayerRequired);
+      return;
+    }
+    const pattern = `%${term}%`;
+    const { data, error: searchError } = await client
+      .from("profiles")
+      .select("*")
+      .or(`player_code.ilike.${pattern},handle.ilike.${pattern},display_name.ilike.${pattern}`)
+      .eq("is_walkin", false)
+      .is("admin_deleted_at", null)
+      .order("display_name", { ascending: true })
+      .limit(50);
+
+    const matches = ((data as unknown as Profile[] | null) ?? []).filter(
+      (target) => !target.is_walkin && !target.admin_deleted_at,
+    );
+    setHostRegisterBusy(false);
+
+    if (searchError || matches.length === 0) {
+      setHostRegisterMatches([]);
+      setHostRegisterError(t.registrationPlayerNotFound);
+      return;
+    }
+
+    setHostRegisterMatches(matches);
+  };
+
+  const changeHostRegistrationProof = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0] ?? null;
+    setHostRegisterProofFile(null);
+    setHostRegisterError(null);
+    if (!file) return;
+    const problem = checkTournamentRegistrationProof(file);
+    if (problem === "type") {
+      setHostRegisterError(t.registrationProofTypeError);
+      event.currentTarget.value = "";
+      return;
+    }
+    if (problem === "size") {
+      setHostRegisterError(t.registrationProofSizeError);
+      event.currentTarget.value = "";
+      return;
+    }
+    setHostRegisterProofFile(file);
+  };
+
+  const registrationRpcError = (message?: string) => {
+    if (message === "tournament_full") return t.registrationFull;
+    if (message === "payment_proof_required") {
+      return t.registrationRequiredFieldError.replace("{field}", t.registrationPaymentProof);
+    }
+    if (message === "team_name_required") {
+      return t.registrationRequiredFieldError.replace("{field}", t.registrationTeamName);
+    }
+    if (message === "blader_name_required") {
+      return t.registrationRequiredFieldError.replace("{field}", t.registrationBladerName);
+    }
+    if (message === "player_required") return t.registrationPlayerRequired;
+    if (message === "profile_not_found") return t.registrationPlayerNotFound;
+    if (message === "invalid_profile") return t.registrationPlayerInvalid;
+    if (message === "registration_closed" || message === "tournament_not_open") return t.registrationClosed;
+    return message ? message.replace(/_/g, " ") : t.hostError;
+  };
+
+  const submitHostRegistration = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!supabase || !profile || !isHost || hostRegisterBusy) return;
+    if (!hostRegisterProfile) {
+      setHostRegisterError(t.registrationPlayerRequired);
+      return;
+    }
+    const cleanBladerName = profileDisplayName(hostRegisterProfile, "").trim();
+    const cleanTeamName = hostRegisterTeamName.trim();
+    const cleanEmail = hostRegisterEmail.trim();
+    const cleanContactNumber = hostRegisterContactNumber.trim();
+    if (!cleanBladerName) {
+      setHostRegisterError(t.registrationRequiredFieldError.replace("{field}", t.registrationBladerName));
+      return;
+    }
+    if (detailRegistrationConfig.teamNameEnabled && !cleanTeamName) {
+      setHostRegisterError(t.registrationRequiredFieldError.replace("{field}", t.registrationTeamName));
+      return;
+    }
+
+    const answers = Object.fromEntries(
+      detailRegistrationConfig.customFields.map((field) => [
+        field.id,
+        (hostRegisterCustomAnswers[field.id] ?? "").trim(),
+      ]),
+    );
+    const missingCustomField = detailRegistrationConfig.customFields.find(
+      (field) => field.required && !answers[field.id],
+    );
+    if (missingCustomField) {
+      setHostRegisterError(t.registrationRequiredFieldError.replace("{field}", missingCustomField.label));
+      return;
+    }
+    const existingPlayer = players.find((player) => player.user_id === hostRegisterProfile.id);
+    if (!existingPlayer && full) {
+      setHostRegisterError(t.registrationFull);
+      return;
+    }
+    if (!hostRegisterProofFile) {
+      setHostRegisterError(t.registrationRequiredFieldError.replace("{field}", t.registrationPaymentProof));
+      return;
+    }
+
+    setHostRegisterBusy(true);
+    setHostRegisterError(null);
+    setHostRegisterSuccess(null);
+
+    const ext = tournamentRegistrationProofExtension(hostRegisterProofFile);
+    const proofPath = `${item.id}/${hostRegisterProfile.id}/host-${profile.id}-proof-${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase.storage
+      .from(TOURNAMENT_REGISTRATION_PROOF_BUCKET)
+      .upload(proofPath, hostRegisterProofFile, {
+        cacheControl: "31536000",
+        contentType: hostRegisterProofFile.type,
+        upsert: false,
+      });
+    if (uploadError) {
+      setHostRegisterBusy(false);
+      setHostRegisterError(`${t.registrationProofUploadError} ${uploadError.message}`);
+      return;
+    }
+
+    const { data, error: submitError } = await supabase.rpc("host_submit_tournament_registration", {
+      tid: item.id,
+      p_user_id: hostRegisterProfile.id,
+      p_email: cleanEmail,
+      p_contact_number: cleanContactNumber,
+      p_team_name: detailRegistrationConfig.teamNameEnabled ? cleanTeamName : null,
+      p_payment_proof_path: proofPath,
+      p_custom_answers: answers,
+    });
+
+    if (submitError) {
+      setHostRegisterBusy(false);
+      setHostRegisterError(registrationRpcError(submitError.message));
+      return;
+    }
+
+    const status = data === "waitlisted" ? t.hostYouWaitlisted : t.hostYouJoined;
+    setHostRegisterSuccess(
+      t.registrationHostSuccess
+        .replace("{player}", profileDisplayName(hostRegisterProfile))
+        .replace("{status}", status),
+    );
+    setHostRegisterProofFile(null);
+    const updatedRegistration = await readHostRegistration(hostRegisterProfile.id);
+    fillHostRegistrationForm(hostRegisterProfile, updatedRegistration);
+    await load();
+    setHostRegisterBusy(false);
+  };
+
+  const openProof = async (path: string | null) => {
+    if (!supabase || !path) return;
+    const { data, error: err } = await supabase.storage
+      .from(TOURNAMENT_REGISTRATION_PROOF_BUCKET)
+      .createSignedUrl(path, 10 * 60);
+    if (err || !data?.signedUrl) {
+      setRosterError("Could not open the payment proof.");
+      return;
+    }
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const csvCell = (value: unknown) => {
+    const text = value == null ? "" : String(value);
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+
+  const exportRegistrations = () => {
+    if (!item) return;
+    const config = normalizeTournamentRegistrationConfig(item.registration_config);
+    const customFields = config.customFields;
+    const header = [
+      "Submitted at",
+      "Status",
+      "Blader name",
+      "SPX ID",
+      "Email",
+      "Contact number",
+      "Team name",
+      "Payment proof path",
+      ...customFields.map((field) => field.label),
+    ];
+    const rows = registrations.map((registration) => [
+      registration.created_at,
+      registration.status,
+      registration.blader_name,
+      registration.profile?.player_code ?? "",
+      registration.email,
+      registration.contact_number,
+      registration.team_name ?? "",
+      registration.payment_proof_path ?? "",
+      ...customFields.map((field) => registration.custom_answers?.[field.id] ?? ""),
+    ]);
+    const csv = [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${item.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "tournament"}-registrations.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -497,11 +905,13 @@ export default function TournamentDetailClient({
         <Link href={`/${locale}/tournaments/${item.id}/live`} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
           BEYLIVE
         </Link>
+        {canSeeBeyliveControl && (
+          <Link href={`/${locale}/tournaments/${item.id}/control`} className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110">
+            BEYLIVE Control
+          </Link>
+        )}
         {isHost && (
           <>
-            <Link href={`/${locale}/tournaments/${item.id}/control`} className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110">
-              BEYLIVE Control
-            </Link>
             <button onClick={() => setEditing(!editing)} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
               {editing ? t.cancel : t.edit}
             </button>
@@ -532,6 +942,32 @@ export default function TournamentDetailClient({
             <label className="mb-1 block text-xs text-ink-dim">{t.hostStartsAt}</label>
             <input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className={inputCls} required />
           </div>
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs text-ink-dim">{t.hostEventType}</label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {(["player", "team"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => changeEventType(option)}
+                  disabled={format === "partner" && option === "player"}
+                  className={`rounded-md border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    editEventType === option
+                      ? "border-accent bg-accent/10"
+                      : "border-edge bg-panel hover:border-accent/50"
+                  }`}
+                >
+                  <div className={`text-sm font-semibold ${editEventType === option ? "text-accent" : "text-ink"}`}>
+                    {option === "team" ? t.hostEventTypeTeam : t.hostEventTypePlayer}
+                  </div>
+                  <div className="mt-1 text-xs leading-relaxed text-ink-dim">
+                    {option === "team" ? t.hostEventTypeTeamDesc : t.hostEventTypePlayerDesc}
+                  </div>
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[11px] text-ink-dim">{t.hostEventTypeHelp}</p>
+          </div>
           <div>
             <label className="mb-1 block text-xs text-ink-dim">{t.hostMaxPlayers}</label>
             <input type="number" min={2} max={256} value={maxPlayers} onChange={(e) => changeMaxPlayers(e.target.value)} className={inputCls} required />
@@ -556,6 +992,12 @@ export default function TournamentDetailClient({
             format={format}
             maxPlayers={maxPlayersNumber}
             targetScore={targetScoreNumber}
+            labels={t}
+            entrantLabel={editEntrantLabel}
+          />
+          <TournamentRegistrationSettings
+            value={registrationConfigForEventType(registrationConfig, editEventType)}
+            onChange={(next) => setRegistrationConfig(registrationConfigForEventType(next, editEventType))}
             labels={t}
           />
           <div className="sm:col-span-2">
@@ -585,7 +1027,12 @@ export default function TournamentDetailClient({
                   {t.hostedBy}: {profileDisplayName(item.host_profile)}
                 </p>
               </div>
-              <span className="rounded-full bg-accent-2/10 px-3 py-1 text-xs font-semibold text-accent-2">{formatLabel}</span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="rounded-full bg-accent-2/10 px-3 py-1 text-xs font-semibold text-accent-2">{formatLabel}</span>
+                <span className="rounded-full bg-panel px-3 py-1 text-xs font-semibold text-ink-dim">
+                  {detailEventType === "team" ? t.hostEventTypeTeam : t.hostEventTypePlayer}
+                </span>
+              </div>
             </div>
             {item.note && <p className="mt-4 text-sm leading-relaxed text-ink-dim">{item.note}</p>}
             <TournamentFormatSummary
@@ -594,12 +1041,17 @@ export default function TournamentDetailClient({
               maxPlayers={item.max_players}
               targetScore={item.target_score ?? 4}
               labels={t}
+              entrantLabel={detailEntrantLabel}
             />
             <div className="mt-4 flex flex-wrap gap-1.5 text-[10px] font-semibold">
               <span className="rounded bg-panel px-2 py-0.5 text-accent">
-                {t.hostJoined}: {item.format === "partner" ? partnerRoster.length : joined.length}/
-                {item.max_players}
+                {t.hostJoined}: {joinedEntryCount}/{item.max_players}
               </span>
+              {full && !mine && !isHost && item.status === "open" && (
+                <span className="rounded bg-atk/10 px-2 py-0.5 text-atk">
+                  {t.tournamentFull}
+                </span>
+              )}
               {item.format !== "partner" && (
                 <span className="rounded bg-panel px-2 py-0.5 text-ink-dim">
                   {t.hostWaitlisted}: {waitlisted.length}
@@ -624,10 +1076,14 @@ export default function TournamentDetailClient({
                 <button onClick={cancel} disabled={busy || item.status !== "open"} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink disabled:opacity-50">
                   {t.cancel}
                 </button>
+              ) : item.status === "open" && full ? (
+                <span className="clip-x border border-atk/40 bg-atk/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-atk">
+                  {t.tournamentFull}
+                </span>
               ) : item.status === "open" ? (
-                <button onClick={join} disabled={busy} className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110 disabled:opacity-50">
-                  {t.joinTournament}
-                </button>
+                <Link href={`/${locale}/tournaments/${item.id}/register`} className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110">
+                  {t.registerTournament}
+                </Link>
               ) : null}
             </div>
           </div>
@@ -754,14 +1210,277 @@ export default function TournamentDetailClient({
           </div>
         </div>
 
+        {isHost && (
+          <div className="panel mt-6 p-5">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="font-display text-sm font-bold tracking-wider text-ink-dim">
+                  {t.registrationListTitle}
+                </div>
+                <p className="mt-1 text-xs text-ink-dim">{t.registrationListIntro}</p>
+              </div>
+              <button
+                onClick={exportRegistrations}
+                disabled={registrations.length === 0}
+                className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:border-accent/60 disabled:opacity-50"
+              >
+                {t.registrationExportCsv}
+              </button>
+            </div>
+
+            <form onSubmit={submitHostRegistration} className="mb-5 border-b border-edge pb-5">
+              <div className="mb-3">
+                <div className="font-display text-xs font-bold uppercase tracking-wider text-accent">
+                  {t.registrationHostOnBehalfTitle}
+                </div>
+                <p className="mt-1 text-xs text-ink-dim">{t.registrationHostOnBehalfIntro}</p>
+              </div>
+
+              {hostRegisterSuccess && (
+                <p className="mb-3 rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-xs font-semibold text-accent">
+                  {hostRegisterSuccess}
+                </p>
+              )}
+              {hostRegisterError && (
+                <p className="mb-3 rounded-md border border-atk/40 bg-atk/10 px-3 py-2 text-xs font-semibold text-atk">
+                  {hostRegisterError}
+                </p>
+              )}
+
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <div>
+                  <label className="mb-1 block text-xs text-ink-dim">{t.registrationPlayerSearch}</label>
+                  <input
+                    value={hostRegisterQuery}
+                    onChange={(e) => {
+                      const nextQuery = e.target.value;
+                      const selectedQuery = hostRegisterProfile
+                        ? hostRegisterProfile.player_code || `@${hostRegisterProfile.handle}`
+                        : "";
+                      setHostRegisterQuery(nextQuery);
+                      setHostRegisterMatches([]);
+                      if (hostRegisterProfile && nextQuery.trim() !== selectedQuery) {
+                        clearHostRegistrationSelection();
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void findHostRegistrationPlayer();
+                      }
+                    }}
+                    className={inputCls}
+                    placeholder="SPX-0001 or @handle"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={findHostRegistrationPlayer}
+                  disabled={hostRegisterBusy}
+                  className="clip-x self-end border border-edge bg-panel-2 px-4 py-2.5 font-display text-xs font-bold tracking-wider text-accent transition hover:border-accent/60 disabled:opacity-50"
+                >
+                  {t.registrationFindPlayer}
+                </button>
+              </div>
+
+              {hostRegisterMatches.length > 0 && (
+                <div className="mt-3">
+                  <label className="mb-1 block text-xs text-ink-dim">{t.registrationPlayerResults}</label>
+                  <select
+                    value={hostRegisterProfile?.id ?? ""}
+                    onChange={(e) => {
+                      const target = hostRegisterMatches.find((match) => match.id === e.target.value);
+                      if (target) void selectHostRegistrationPlayer(target);
+                    }}
+                    className={inputCls}
+                  >
+                    <option value="">{t.registrationSelectPlayer}</option>
+                    {hostRegisterMatches.map((match) => (
+                      <option key={match.id} value={match.id}>
+                        {(match.player_code ? `${match.player_code} / ` : "")}
+                        {profileDisplayName(match)} / @{match.handle}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {hostRegisterProfile && (
+                <div className="mt-4 grid gap-3">
+                  <div className="border-l-2 border-accent pl-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-ink-dim">
+                      {t.registrationSelectedPlayer}
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-ink">
+                      {profileDisplayName(hostRegisterProfile)}
+                      {hostRegisterProfile.player_code && (
+                        <span className="ml-2 font-mono text-[10px] text-accent-2">
+                          {hostRegisterProfile.player_code}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 text-xs text-ink-dim">@{hostRegisterProfile.handle}</div>
+                    {hostRegisterFullBlocked && (
+                      <div className="mt-2 text-xs font-semibold text-atk">{t.registrationFull}</div>
+                    )}
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs text-ink-dim">{t.registrationEmail}</label>
+                      <input
+                        type="email"
+                        value={hostRegisterEmail}
+                        onChange={(e) => setHostRegisterEmail(e.target.value)}
+                        className={inputCls}
+                        required
+                        maxLength={254}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-ink-dim">{t.registrationBladerName}</label>
+                      <input value={profileDisplayName(hostRegisterProfile)} className={`${inputCls} text-ink-dim`} readOnly />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-ink-dim">{t.registrationContactNumber}</label>
+                      <input
+                        value={hostRegisterContactNumber}
+                        onChange={(e) => setHostRegisterContactNumber(e.target.value)}
+                        className={inputCls}
+                        required
+                        maxLength={32}
+                      />
+                    </div>
+                    {detailRegistrationConfig.teamNameEnabled && (
+                      <div>
+                        <label className="mb-1 block text-xs text-ink-dim">{t.registrationTeamName}</label>
+                        <input
+                          value={hostRegisterTeamName}
+                          onChange={(e) => setHostRegisterTeamName(e.target.value)}
+                          className={inputCls}
+                          required
+                          maxLength={100}
+                        />
+                      </div>
+                    )}
+                    <div className="sm:col-span-2">
+                      <label className="mb-1 block text-xs text-ink-dim">{t.registrationPaymentProof}</label>
+                      <input
+                        type="file"
+                        accept={TOURNAMENT_REGISTRATION_PROOF_ACCEPT}
+                        onChange={changeHostRegistrationProof}
+                        className={`${inputCls} file:mr-3 file:rounded file:border-0 file:bg-accent file:px-3 file:py-1 file:text-xs file:font-bold file:text-bg`}
+                        required
+                      />
+                      <p className="mt-1 text-[11px] text-ink-dim">
+                        {hostRegisterExisting?.payment_proof_path
+                          ? t.registrationExistingProof
+                          : t.registrationPaymentProofHint}
+                      </p>
+                    </div>
+                    {detailRegistrationConfig.customFields.map((field) => (
+                      <div key={field.id}>
+                        <label className="mb-1 block text-xs text-ink-dim">{field.label}</label>
+                        <input
+                          value={hostRegisterCustomAnswers[field.id] ?? ""}
+                          onChange={(e) =>
+                            setHostRegisterCustomAnswers((current) => ({
+                              ...current,
+                              [field.id]: e.target.value,
+                            }))
+                          }
+                          className={inputCls}
+                          required={field.required}
+                          maxLength={160}
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={hostRegisterBusy || hostRegisterFullBlocked}
+                    className="clip-x bg-accent px-5 py-2.5 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+                  >
+                    {hostRegisterBusy
+                      ? t.registrationSubmitting
+                      : hostRegisterExisting
+                        ? t.registrationHostUpdate
+                        : t.registrationHostSubmit}
+                  </button>
+                </div>
+              )}
+            </form>
+
+            {registrations.length === 0 ? (
+              <p className="text-sm text-ink-dim">{t.registrationNoSubmissions}</p>
+            ) : (
+              <div className="grid gap-3">
+                {registrations.map((registration) => (
+                  <div key={registration.id} className="rounded-md border border-edge bg-panel p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-ink">
+                          {registration.blader_name}
+                          {registration.profile?.player_code && (
+                            <span className="ml-2 font-mono text-[10px] text-accent-2">
+                              {registration.profile.player_code}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1 text-xs text-ink-dim">
+                          {registration.email} / {registration.contact_number}
+                        </div>
+                        {registration.team_name && (
+                          <div className="mt-1 text-xs font-semibold text-accent">
+                            {t.registrationTeamName}: {registration.team_name}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        {registration.payment_proof_path ? (
+                          <button
+                            onClick={() => openProof(registration.payment_proof_path)}
+                            className="clip-x border border-accent/50 bg-accent/10 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-accent transition hover:bg-accent/20"
+                          >
+                            {t.registrationViewProof}
+                          </button>
+                        ) : (
+                          <span className="rounded bg-bg px-2 py-1 text-[10px] font-semibold text-ink-dim">
+                            {t.registrationNoProof}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {detailRegistrationConfig.customFields.length > 0 && (
+                      <dl className="mt-3 grid gap-2 border-t border-edge pt-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {detailRegistrationConfig.customFields.map((field) => (
+                          <div key={field.id} className="rounded bg-bg px-2 py-1.5">
+                            <dt className="text-[10px] font-bold uppercase tracking-wide text-ink-dim">
+                              {field.label}
+                            </dt>
+                            <dd className="mt-0.5 text-xs text-ink">
+                              {registration.custom_answers?.[field.id] || "-"}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {hasPoolStageSetup && (
           <div className="panel mt-6 p-5">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="font-display text-sm font-bold tracking-wider text-ink-dim">Pools</div>
                 <p className="mt-1 text-xs text-ink-dim">
-                  Splits joined players into {poolStageGroupCount} pools and advances {poolStageAdvanceCount} players to the top cut. Safe to
-                  re-draw after adding more players — anyone already placed (including hand-moved players) stays put.
+                  Splits joined {poolEntrantLabel} into {poolStageGroupCount} pools and advances {poolStageAdvanceCount} {poolEntrantLabel} to the top cut. Safe to
+                  re-draw after adding more {poolEntrantLabel} — {poolPlacedLabel} already placed (including hand-moved {poolEntrantLabel}) stays put.
                 </p>
               </div>
               {isHost && (
@@ -826,7 +1545,7 @@ export default function TournamentDetailClient({
             ) : (
               <p className="text-sm text-ink-dim">
                 {joined.length < poolStageMinPlayers
-                  ? `Need at least ${poolStageMinPlayers} joined players to draw ${poolStageGroupCount} pools (${joined.length}/${poolStageMinPlayers}).`
+                  ? `Need at least ${poolStageMinPlayers} joined ${poolEntrantLabel} to draw ${poolStageGroupCount} pools (${joined.length}/${poolStageMinPlayers}).`
                   : `No pools drawn yet - click "Draw pools" to split the lineup into ${poolStageGroupCount} groups.`}
               </p>
             )}

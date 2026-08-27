@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import type { TournamentFormatConfig } from "./tournamentFormat";
+import type { TournamentRegistrationConfig } from "./tournamentRegistration";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -128,6 +129,8 @@ export type TournamentFormat =
   | "partner"
   | "group_stage";
 
+export type TournamentEventType = "player" | "team";
+
 export interface TournamentPlayer {
   tournament_id: string;
   user_id: string;
@@ -136,6 +139,22 @@ export interface TournamentPlayer {
   /** Group-stage pool (1-8) once assign_group_stage_pools runs; null for every other format. */
   pool_no: number | null;
   created_at: string;
+  profile?: Profile;
+}
+
+export interface TournamentRegistration {
+  id: string;
+  tournament_id: string;
+  user_id: string;
+  email: string;
+  blader_name: string;
+  contact_number: string;
+  team_name: string | null;
+  payment_proof_path: string | null;
+  custom_answers: Record<string, string>;
+  status: "submitted" | "cancelled";
+  created_at: string;
+  updated_at: string;
   profile?: Profile;
 }
 
@@ -178,7 +197,9 @@ export interface CommunityTournament {
   venue: string;
   starts_at: string;
   format: TournamentFormat;
+  event_type: TournamentEventType;
   format_config: TournamentFormatConfig | null;
+  registration_config: TournamentRegistrationConfig | null;
   max_players: number;
   live_enabled: boolean;
   stream_url: string | null;

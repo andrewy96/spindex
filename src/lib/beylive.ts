@@ -9,6 +9,7 @@ import {
 } from "./supabase";
 import { profileDisplayName } from "./profileName";
 import { normalizeTournamentFormatConfig } from "./tournamentFormat";
+import { inferTournamentEventType } from "./tournamentEvent";
 
 /** The four scorable finish types, shared by every inline/standalone BEYLIVE scorer. */
 export const BEYLIVE_FINISHES: { key: Finish; label: string; color: string }[] = [
@@ -160,7 +161,7 @@ export function beyliveStadiums(tournament: CommunityTournament | null | undefin
 }
 
 export function isBeyliveTeamTournament(tournament: CommunityTournament | null | undefined) {
-  return tournament?.format === "partner";
+  return tournament?.format === "partner" || inferTournamentEventType(tournament) === "team";
 }
 
 export function isBeyliveGroupStageTournament(tournament: CommunityTournament | null | undefined) {

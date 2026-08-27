@@ -57,9 +57,9 @@ function advanceRuleLabel(rule: TournamentAdvanceRule, labels: Dict["tournaments
   }[rule];
 }
 
-function stageSummary(stage: TournamentFormatStage, labels: Dict["tournaments"]) {
+function stageSummary(stage: TournamentFormatStage, labels: Dict["tournaments"], entrantLabel = labels.formatEntrants) {
   const parts = [
-    `${stage.entrants} ${labels.formatEntrants}`,
+    `${stage.entrants} ${entrantLabel}`,
     `${labels.formatAdvance} ${stage.advanceCount}`,
   ];
   if (stage.groups) parts.push(`${stage.groups} ${labels.formatGroups}`);
@@ -86,6 +86,7 @@ export function TournamentFormatSummary({
   maxPlayers,
   targetScore,
   labels,
+  entrantLabel,
   compact = false,
 }: {
   value: unknown;
@@ -93,6 +94,7 @@ export function TournamentFormatSummary({
   maxPlayers: number;
   targetScore: number;
   labels: Dict["tournaments"];
+  entrantLabel?: string;
   compact?: boolean;
 }) {
   const config = normalizeTournamentFormatConfig(value, format, maxPlayers, targetScore);
@@ -111,7 +113,7 @@ export function TournamentFormatSummary({
             key={`${stage.id}-${index}`}
             className={compact ? "rounded bg-accent/10 px-2 py-0.5 text-accent" : "text-xs leading-relaxed text-ink-dim"}
           >
-            {stage.name}: {stageSummary(stage, labels)}
+            {stage.name}: {stageSummary(stage, labels, entrantLabel)}
           </div>
         ))}
       </div>
@@ -126,6 +128,7 @@ export default function TournamentFormatDesigner({
   maxPlayers,
   targetScore,
   labels,
+  entrantLabel,
 }: {
   value: TournamentFormatConfig;
   onChange: (next: TournamentFormatConfig) => void;
@@ -133,6 +136,7 @@ export default function TournamentFormatDesigner({
   maxPlayers: number;
   targetScore: number;
   labels: Dict["tournaments"];
+  entrantLabel?: string;
 }) {
   const config = normalizeTournamentFormatConfig(value, format, maxPlayers, targetScore);
 
@@ -280,7 +284,7 @@ export default function TournamentFormatDesigner({
                   </label>
                   <label className="grid gap-1">
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-dim">
-                      {labels.formatEntrants}
+                      {entrantLabel ?? labels.formatEntrants}
                     </span>
                     <input
                       type="number"
@@ -396,7 +400,7 @@ export default function TournamentFormatDesigner({
                 </div>
 
                 <div className="mt-2 rounded bg-bg px-2 py-1.5 text-[10px] leading-relaxed text-ink-dim">
-                  {stageSummary(stage, labels)}
+                  {stageSummary(stage, labels, entrantLabel)}
                 </div>
               </div>
             ))}

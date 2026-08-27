@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Locale } from "@/i18n";
+import { useAuth } from "@/lib/auth";
 import { CommunityTournament, supabase, TOURNAMENT_SELECT } from "@/lib/supabase";
 import { beyliveFormatLabel, beyliveStadiums, beyliveStatusLabel, beyliveTeamCode, beyliveTeamName } from "@/lib/beylive";
 import { profileDisplayName } from "@/lib/profileName";
+import { canAccessBeyliveControl } from "@/lib/beyliveAccess";
 
 function fmtWhen(iso: string, locale: Locale) {
   return new Date(iso).toLocaleString(locale === "zh" ? "zh-CN" : "en-MY", {
@@ -39,6 +41,7 @@ function eventState(item: CommunityTournament, now: number) {
 }
 
 export default function BeyliveHubClient({ locale }: { locale: Locale }) {
+  const { profile } = useAuth();
   const [items, setItems] = useState<CommunityTournament[]>([]);
   const [loading, setLoading] = useState(true);
   const [scope, setScope] = useState<EventScope>("all");
@@ -149,6 +152,7 @@ export default function BeyliveHubClient({ locale }: { locale: Locale }) {
                 const state = eventState(item, Date.now());
                 const hasLivePage = item.live_enabled || item.status !== "open";
                 const streams = streamCount(item);
+                const canSeeBeyliveControl = canAccessBeyliveControl(profile, item);
                 return (
                   <div key={item.id} className="panel flex flex-col gap-4 p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -185,9 +189,11 @@ export default function BeyliveHubClient({ locale }: { locale: Locale }) {
                       <Link href={hasLivePage ? `/${locale}/tournaments/${item.id}/live` : `/${locale}/tournaments/${item.id}`} className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110">
                         {hasLivePage ? "Watch BEYLIVE" : "View event"}
                       </Link>
-                      <Link href={`/${locale}/tournaments/${item.id}/control`} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent-2 transition hover:border-accent-2/60">
-                        Control
-                      </Link>
+                      {canSeeBeyliveControl && (
+                        <Link href={`/${locale}/tournaments/${item.id}/control`} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent-2 transition hover:border-accent-2/60">
+                          Control
+                        </Link>
+                      )}
                     </div>
                   </div>
                 );
