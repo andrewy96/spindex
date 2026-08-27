@@ -514,7 +514,7 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
           />
           <TournamentRegistrationSettings
             value={registrationConfigForEventType(registrationConfig, effectiveEventType)}
-            onChange={(next) => setRegistrationConfig(registrationConfigForEventType(next, effectiveEventType))}
+            onChange={setRegistrationConfig}
             labels={t}
           />
           <div className="sm:col-span-2">

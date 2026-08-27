@@ -1007,7 +1007,7 @@ export default function TournamentDetailClient({
           />
           <TournamentRegistrationSettings
             value={registrationConfigForEventType(registrationConfig, editEventType)}
-            onChange={(next) => setRegistrationConfig(registrationConfigForEventType(next, editEventType))}
+            onChange={setRegistrationConfig}
             labels={t}
           />
           <div className="sm:col-span-2">
