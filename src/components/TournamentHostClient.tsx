@@ -28,6 +28,7 @@ import {
 import {
   inferTournamentEventType,
   registrationConfigForEventType,
+  registrationConfigWithTeamDefaults,
   tournamentUsesTeamEntrants,
 } from "@/lib/tournamentEvent";
 
@@ -177,8 +178,8 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
   const [formatConfig, setFormatConfig] = useState<TournamentFormatConfig>(() =>
     defaultTournamentFormatConfig("single_elimination", 16, 4, false),
   );
-  const [registrationConfig, setRegistrationConfig] = useState<TournamentRegistrationConfig>(
-    DEFAULT_TOURNAMENT_REGISTRATION_CONFIG,
+  const [registrationConfig, setRegistrationConfig] = useState<TournamentRegistrationConfig>(() =>
+    registrationConfigWithTeamDefaults(DEFAULT_TOURNAMENT_REGISTRATION_CONFIG, "team"),
   );
   const [note, setNote] = useState("");
 
@@ -232,7 +233,7 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
 
   const changeEventType = (next: TournamentEventType) => {
     setEventType(next);
-    setRegistrationConfig((current) => registrationConfigForEventType(current, next));
+    setRegistrationConfig((current) => registrationConfigWithTeamDefaults(current, next));
   };
 
   const changeFormat = (next: TournamentFormat) => {
@@ -313,7 +314,7 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
     setTargetScore("4");
     setStadiumCount("2");
     setFormatConfig(defaultTournamentFormatConfig("single_elimination", 16, 4, false));
-    setRegistrationConfig(DEFAULT_TOURNAMENT_REGISTRATION_CONFIG);
+    setRegistrationConfig(registrationConfigWithTeamDefaults(DEFAULT_TOURNAMENT_REGISTRATION_CONFIG, "team"));
     setNote("");
     load();
   };

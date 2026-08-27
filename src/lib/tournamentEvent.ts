@@ -1,6 +1,6 @@
 import type { CommunityTournament, TournamentEventType, TournamentFormat } from "./supabase";
 import {
-  ensureTeamBladerCustomFields,
+  addTeamBladerDefaultCustomFields,
   normalizeTournamentRegistrationConfig,
   type TournamentRegistrationConfig,
 } from "./tournamentRegistration";
@@ -45,12 +45,23 @@ export function registrationConfigForEventType(
       ...normalized,
       teamNameEnabled: true,
       teamNameRequired: true,
-      customFields: ensureTeamBladerCustomFields(normalized.customFields),
     };
   }
   return {
     ...normalized,
     teamNameEnabled: false,
     teamNameRequired: false,
+  };
+}
+
+export function registrationConfigWithTeamDefaults(
+  config: TournamentRegistrationConfig,
+  eventType: TournamentEventType,
+): TournamentRegistrationConfig {
+  const normalized = registrationConfigForEventType(config, eventType);
+  if (eventType !== "team") return normalized;
+  return {
+    ...normalized,
+    customFields: addTeamBladerDefaultCustomFields(normalized.customFields),
   };
 }

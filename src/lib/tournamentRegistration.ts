@@ -111,31 +111,18 @@ export function tournamentRegistrationConfigForSave(
   };
 }
 
-export function ensureTeamBladerCustomFields(
+export function addTeamBladerDefaultCustomFields(
   fields: TournamentRegistrationCustomField[],
 ): TournamentRegistrationCustomField[] {
-  const templates = TEAM_BLADER_CUSTOM_FIELDS;
-  const templateLabels = new Set(templates.map((field) => comparableFieldLabel(field.label)));
-  const templateIds = new Set(templates.map((field) => field.id));
-  const templateFields = templates.map((template) => {
-    const existing = fields.find(
-      (field) =>
-        field.id === template.id ||
-        templateLabels.has(comparableFieldLabel(field.label)),
-    );
-    return {
-      ...(existing ?? template),
-      id: existing?.id || template.id,
-      label: existing?.label || template.label,
-      required: true,
-    };
-  });
-  const extras = fields.filter(
-    (field) =>
-      !templateIds.has(field.id) &&
-      !templateLabels.has(comparableFieldLabel(field.label)),
+  const existingKeys = new Set(
+    fields.flatMap((field) => [field.id, comparableFieldLabel(field.label)]),
   );
-  return [...templateFields, ...extras].slice(0, 6);
+  const missingDefaults = TEAM_BLADER_CUSTOM_FIELDS.filter(
+    (template) =>
+      !existingKeys.has(template.id) &&
+      !existingKeys.has(comparableFieldLabel(template.label)),
+  );
+  return [...fields, ...missingDefaults].slice(0, 6);
 }
 
 export function newTournamentRegistrationCustomField(

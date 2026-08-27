@@ -38,6 +38,7 @@ import { canAccessBeyliveControl } from "@/lib/beyliveAccess";
 import {
   inferTournamentEventType,
   registrationConfigForEventType,
+  registrationConfigWithTeamDefaults,
   tournamentUsesTeamEntrants,
 } from "@/lib/tournamentEvent";
 
@@ -394,7 +395,7 @@ export default function TournamentDetailClient({
 
   const changeEventType = (next: TournamentEventType) => {
     setEventType(next);
-    setRegistrationConfig((current) => registrationConfigForEventType(current, next));
+    setRegistrationConfig((current) => registrationConfigWithTeamDefaults(current, next));
   };
 
   const changeFormat = (next: TournamentFormat) => {
