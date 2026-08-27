@@ -356,8 +356,11 @@ export default function TournamentDetailClient({
     : null;
   const hostRegisterFullBlocked = !!hostRegisterProfile && !hostRegisterSelectedPlayer && full;
   const formatLabel = formats.find((f) => f.key === item.format)?.label ?? item.format;
-  const detailRegistrationConfig = normalizeTournamentRegistrationConfig(item.registration_config);
   const detailEventType = inferTournamentEventType(item);
+  const detailRegistrationConfig = registrationConfigForEventType(
+    normalizeTournamentRegistrationConfig(item.registration_config),
+    detailEventType,
+  );
   const detailEntrantLabel =
     tournamentUsesTeamEntrants(detailEventType, item.format)
       ? t.formatEntrantsTeams
@@ -739,6 +742,12 @@ export default function TournamentDetailClient({
     }
     if (message === "blader_name_required") {
       return t.registrationRequiredFieldError.replace("{field}", t.registrationBladerName);
+    }
+    if (message?.startsWith("custom_field_required:")) {
+      return t.registrationRequiredFieldError.replace(
+        "{field}",
+        message.slice("custom_field_required:".length) || t.registrationCustomFieldPlaceholder,
+      );
     }
     if (message === "player_required") return t.registrationPlayerRequired;
     if (message === "profile_not_found") return t.registrationPlayerNotFound;

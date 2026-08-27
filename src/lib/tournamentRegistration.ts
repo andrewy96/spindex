@@ -25,6 +25,11 @@ export interface TournamentRegistrationConfig {
   customFields: TournamentRegistrationCustomField[];
 }
 
+export const TEAM_BLADER_CUSTOM_FIELDS: TournamentRegistrationCustomField[] = [
+  { id: "blader_2_name", label: "Blader 2 name", required: true },
+  { id: "blader_3_name", label: "Blader 3 name", required: true },
+];
+
 export const DEFAULT_TOURNAMENT_REGISTRATION_CONFIG: TournamentRegistrationConfig = {
   enabled: true,
   teamNameEnabled: true,
@@ -34,6 +39,10 @@ export const DEFAULT_TOURNAMENT_REGISTRATION_CONFIG: TournamentRegistrationConfi
   paymentProofRequired: true,
   customFields: [],
 };
+
+function comparableFieldLabel(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
 
 function cleanText(value: unknown, fallback = "") {
   return typeof value === "string" ? value.trim() : fallback;
@@ -102,12 +111,41 @@ export function tournamentRegistrationConfigForSave(
   };
 }
 
-export function newTournamentRegistrationCustomField(): TournamentRegistrationCustomField {
+export function ensureTeamBladerCustomFields(
+  fields: TournamentRegistrationCustomField[],
+): TournamentRegistrationCustomField[] {
+  const templates = TEAM_BLADER_CUSTOM_FIELDS;
+  const templateLabels = new Set(templates.map((field) => comparableFieldLabel(field.label)));
+  const templateIds = new Set(templates.map((field) => field.id));
+  const templateFields = templates.map((template) => {
+    const existing = fields.find(
+      (field) =>
+        field.id === template.id ||
+        templateLabels.has(comparableFieldLabel(field.label)),
+    );
+    return {
+      ...(existing ?? template),
+      id: existing?.id || template.id,
+      label: existing?.label || template.label,
+      required: true,
+    };
+  });
+  const extras = fields.filter(
+    (field) =>
+      !templateIds.has(field.id) &&
+      !templateLabels.has(comparableFieldLabel(field.label)),
+  );
+  return [...templateFields, ...extras].slice(0, 6);
+}
+
+export function newTournamentRegistrationCustomField(
+  index?: number,
+): TournamentRegistrationCustomField {
   const suffix =
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID().replace(/-/g, "").slice(0, 8)
       : String(Date.now()).slice(-8);
-  return { id: `field_${suffix}`, label: "", required: false };
+  return { id: `field_${suffix}`, label: `Question ${index ?? ""}`.trim(), required: false };
 }
 
 export function checkTournamentRegistrationProof(file: File): "type" | "size" | null {

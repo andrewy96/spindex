@@ -1,5 +1,6 @@
 import type { CommunityTournament, TournamentEventType, TournamentFormat } from "./supabase";
 import {
+  ensureTeamBladerCustomFields,
   normalizeTournamentRegistrationConfig,
   type TournamentRegistrationConfig,
 } from "./tournamentRegistration";
@@ -44,6 +45,7 @@ export function registrationConfigForEventType(
       ...normalized,
       teamNameEnabled: true,
       teamNameRequired: true,
+      customFields: ensureTeamBladerCustomFields(normalized.customFields),
     };
   }
   return {

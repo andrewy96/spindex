@@ -19,6 +19,7 @@ import {
   TOURNAMENT_REGISTRATION_PROOF_ACCEPT,
   TOURNAMENT_REGISTRATION_PROOF_BUCKET,
 } from "@/lib/tournamentRegistration";
+import { inferTournamentEventType, registrationConfigForEventType } from "@/lib/tournamentEvent";
 
 const inputCls =
   "w-full rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent";
@@ -84,7 +85,10 @@ export default function TournamentRegistrationClient({
       .eq("user_id", profile.id)
       .maybeSingle();
     const registration = (regData as unknown as TournamentRegistration | null) ?? null;
-    const config = normalizeTournamentRegistrationConfig(next.registration_config);
+    const config = registrationConfigForEventType(
+      normalizeTournamentRegistrationConfig(next.registration_config),
+      inferTournamentEventType(next),
+    );
     const phone = session?.user.phone ? displayMyPhone(session.user.phone) : "";
     setExisting(registration);
     setEmail(registration?.email ?? session?.user.email ?? "");
@@ -105,8 +109,12 @@ export default function TournamentRegistrationClient({
   }, [load]);
 
   const config = useMemo(
-    () => normalizeTournamentRegistrationConfig(item?.registration_config),
-    [item?.registration_config],
+    () =>
+      registrationConfigForEventType(
+        normalizeTournamentRegistrationConfig(item?.registration_config),
+        inferTournamentEventType(item),
+      ),
+    [item],
   );
   const players = item?.players ?? [];
   const mine = profile ? players.find((player) => player.user_id === profile.id) : null;
@@ -208,6 +216,11 @@ export default function TournamentRegistrationClient({
             ? t.registrationRequiredFieldError.replace("{field}", t.registrationTeamName)
           : submitError.message === "blader_name_required"
             ? t.registrationRequiredFieldError.replace("{field}", t.registrationBladerName)
+          : submitError.message?.startsWith("custom_field_required:")
+            ? t.registrationRequiredFieldError.replace(
+                "{field}",
+                submitError.message.slice("custom_field_required:".length) || t.registrationCustomFieldPlaceholder,
+              )
           : submitError.message
             ? submitError.message.replace(/_/g, " ")
             : t.hostError,

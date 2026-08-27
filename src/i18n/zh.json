@@ -607,7 +607,7 @@
     "registrationPaymentInstructions": "付款资料",
     "registrationPaymentRemark": "付款备注说明",
     "registrationCustomFields": "额外问题",
-    "registrationCustomFieldsHint": "可加入赛制相关问题，例如卡组、组别或监护人姓名。",
+    "registrationCustomFieldsHint": "团队赛事会自动包含 Blader 2 name 和 Blader 3 name。也可加入卡组、组别或监护人姓名等额外问题。",
     "registrationAddField": "新增问题",
     "registrationCustomFieldPlaceholder": "问题标题",
     "registrationRequired": "必填",

@@ -607,7 +607,7 @@
     "registrationPaymentInstructions": "Payment details",
     "registrationPaymentRemark": "Payment remark instruction",
     "registrationCustomFields": "Extra questions",
-    "registrationCustomFieldsHint": "Add format-specific fields such as deck list, category, or guardian name.",
+    "registrationCustomFieldsHint": "Team events include Blader 2 name and Blader 3 name automatically. Add more fields for deck list, category, or guardian name.",
     "registrationAddField": "Add question",
     "registrationCustomFieldPlaceholder": "Question label",
     "registrationRequired": "Required",

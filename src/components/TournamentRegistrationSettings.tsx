@@ -130,7 +130,10 @@ export default function TournamentRegistrationSettings({
             type="button"
             onClick={() =>
               update({
-                customFields: [...value.customFields, newTournamentRegistrationCustomField()].slice(0, 6),
+                customFields: [
+                  ...value.customFields,
+                  newTournamentRegistrationCustomField(value.customFields.length + 1),
+                ].slice(0, 6),
               })
             }
             disabled={value.customFields.length >= 6}
