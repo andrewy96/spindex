@@ -64,7 +64,12 @@ export default function TournamentRegistrationSettings({
           <input
             type="checkbox"
             checked={value.teamNameEnabled}
-            onChange={(e) => update({ teamNameEnabled: e.target.checked })}
+            onChange={(e) =>
+              update({
+                teamNameEnabled: e.target.checked,
+                teamNameRequired: e.target.checked ? value.teamNameRequired : false,
+              })
+            }
             className="accent-[var(--color-accent)]"
           />
           {labels.registrationTeamNameEnabled}
@@ -72,8 +77,8 @@ export default function TournamentRegistrationSettings({
         <label className="flex items-center gap-2 rounded border border-edge bg-panel px-3 py-2 text-xs font-semibold text-ink-dim">
           <input
             type="checkbox"
-            checked={value.teamNameEnabled}
-            onChange={() => update({ teamNameRequired: value.teamNameEnabled })}
+            checked={value.teamNameRequired}
+            onChange={(e) => update({ teamNameRequired: e.target.checked })}
             disabled={!value.teamNameEnabled}
             className="accent-[var(--color-accent)] disabled:opacity-50"
           />

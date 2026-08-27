@@ -153,7 +153,7 @@ export default function TournamentRegistrationClient({
       setError(t.registrationRequiredFieldError.replace("{field}", t.registrationBladerName));
       return;
     }
-    if (config.teamNameEnabled && !cleanTeamName) {
+    if (config.teamNameEnabled && config.teamNameRequired && !cleanTeamName) {
       setError(t.registrationRequiredFieldError.replace("{field}", t.registrationTeamName));
       return;
     }
@@ -372,7 +372,7 @@ export default function TournamentRegistrationClient({
                 value={teamName}
                 onChange={(e) => setTeamName(e.target.value)}
                 className={inputCls}
-                required
+                required={config.teamNameRequired}
                 maxLength={100}
               />
             </div>

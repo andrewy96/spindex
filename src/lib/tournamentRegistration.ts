@@ -82,11 +82,13 @@ export function normalizeTournamentRegistrationConfig(value: unknown): Tournamen
     : [];
 
   const teamNameEnabled = cleanBool(input.teamNameEnabled, DEFAULT_TOURNAMENT_REGISTRATION_CONFIG.teamNameEnabled);
+  const teamNameRequired =
+    teamNameEnabled && cleanBool(input.teamNameRequired, DEFAULT_TOURNAMENT_REGISTRATION_CONFIG.teamNameRequired);
 
   return {
     enabled: cleanBool(input.enabled, DEFAULT_TOURNAMENT_REGISTRATION_CONFIG.enabled),
     teamNameEnabled,
-    teamNameRequired: teamNameEnabled,
+    teamNameRequired,
     paymentInstructions:
       cleanText(input.paymentInstructions) || DEFAULT_TOURNAMENT_REGISTRATION_CONFIG.paymentInstructions,
     paymentRemarkHint:
@@ -102,7 +104,7 @@ export function tournamentRegistrationConfigForSave(
   const normalized = normalizeTournamentRegistrationConfig(config);
   return {
     ...normalized,
-    teamNameRequired: normalized.teamNameEnabled,
+    teamNameRequired: normalized.teamNameEnabled && normalized.teamNameRequired,
     paymentProofRequired: true,
     customFields: normalized.customFields.map((field, index) => ({
       ...field,

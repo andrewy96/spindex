@@ -41,11 +41,7 @@ export function registrationConfigForEventType(
 ): TournamentRegistrationConfig {
   const normalized = normalizeTournamentRegistrationConfig(config);
   if (eventType === "team") {
-    return {
-      ...normalized,
-      teamNameEnabled: true,
-      teamNameRequired: true,
-    };
+    return normalized;
   }
   return {
     ...normalized,
@@ -62,6 +58,8 @@ export function registrationConfigWithTeamDefaults(
   if (eventType !== "team") return normalized;
   return {
     ...normalized,
+    teamNameEnabled: true,
+    teamNameRequired: true,
     customFields: addTeamBladerDefaultCustomFields(normalized.customFields),
   };
 }

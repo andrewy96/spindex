@@ -772,7 +772,7 @@ export default function TournamentDetailClient({
       setHostRegisterError(t.registrationRequiredFieldError.replace("{field}", t.registrationBladerName));
       return;
     }
-    if (detailRegistrationConfig.teamNameEnabled && !cleanTeamName) {
+    if (detailRegistrationConfig.teamNameEnabled && detailRegistrationConfig.teamNameRequired && !cleanTeamName) {
       setHostRegisterError(t.registrationRequiredFieldError.replace("{field}", t.registrationTeamName));
       return;
     }
@@ -1368,7 +1368,7 @@ export default function TournamentDetailClient({
                           value={hostRegisterTeamName}
                           onChange={(e) => setHostRegisterTeamName(e.target.value)}
                           className={inputCls}
-                          required
+                          required={detailRegistrationConfig.teamNameRequired}
                           maxLength={100}
                         />
                       </div>
