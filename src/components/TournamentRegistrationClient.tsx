@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Dict, Locale } from "@/i18n";
@@ -26,6 +26,102 @@ const inputCls =
   "w-full rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent";
 const TOURNAMENT_SELECT =
   "*, host_profile:profiles!tournaments_host_fkey(*), players:tournament_players(*, profile:profiles!tournament_players_user_id_fkey(*))";
+const REGISTRATION_DRAFT_VERSION = 1;
+
+type RegistrationDraftValues = {
+  email: string;
+  contactNumber: string;
+  teamName: string;
+  customAnswers: Record<string, string>;
+  proofFileName: string | null;
+};
+
+type RegistrationDraft = RegistrationDraftValues & {
+  version: typeof REGISTRATION_DRAFT_VERSION;
+  tournamentId: string;
+  profileId: string;
+  savedAt: number;
+};
+
+function registrationDraftKey(tournamentId: string, profileId: string) {
+  return `spindex.tournament-registration-draft.${tournamentId}.${profileId}`;
+}
+
+function cleanDraftAnswers(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  );
+}
+
+function readRegistrationDraft(tournamentId: string, profileId: string): RegistrationDraft | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(registrationDraftKey(tournamentId, profileId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<RegistrationDraft>;
+    if (
+      parsed.version !== REGISTRATION_DRAFT_VERSION ||
+      parsed.tournamentId !== tournamentId ||
+      parsed.profileId !== profileId ||
+      typeof parsed.savedAt !== "number"
+    ) {
+      return null;
+    }
+    return {
+      version: REGISTRATION_DRAFT_VERSION,
+      tournamentId,
+      profileId,
+      email: typeof parsed.email === "string" ? parsed.email : "",
+      contactNumber: typeof parsed.contactNumber === "string" ? parsed.contactNumber : "",
+      teamName: typeof parsed.teamName === "string" ? parsed.teamName : "",
+      customAnswers: cleanDraftAnswers(parsed.customAnswers),
+      proofFileName: typeof parsed.proofFileName === "string" ? parsed.proofFileName : null,
+      savedAt: parsed.savedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeRegistrationDraft(draft: RegistrationDraft) {
+  try {
+    window.localStorage.setItem(registrationDraftKey(draft.tournamentId, draft.profileId), JSON.stringify(draft));
+  } catch {
+    /* local draft storage unavailable */
+  }
+}
+
+function clearRegistrationDraft(tournamentId: string, profileId: string) {
+  try {
+    window.localStorage.removeItem(registrationDraftKey(tournamentId, profileId));
+  } catch {
+    /* local draft storage unavailable */
+  }
+}
+
+function hasRegistrationDraftContent(values: RegistrationDraftValues) {
+  return (
+    !!values.email.trim() ||
+    !!values.contactNumber.trim() ||
+    !!values.teamName.trim() ||
+    !!values.proofFileName ||
+    Object.values(values.customAnswers).some((answer) => answer.trim())
+  );
+}
+
+function registrationDraftValuesEqual(a: RegistrationDraftValues, b: RegistrationDraftValues) {
+  if (
+    a.email !== b.email ||
+    a.contactNumber !== b.contactNumber ||
+    a.teamName !== b.teamName ||
+    a.proofFileName !== b.proofFileName
+  ) {
+    return false;
+  }
+  const keys = new Set([...Object.keys(a.customAnswers), ...Object.keys(b.customAnswers)]);
+  return [...keys].every((key) => (a.customAnswers[key] ?? "") === (b.customAnswers[key] ?? ""));
+}
 
 function fmtWhen(iso: string, locale: Locale) {
   return new Date(iso).toLocaleString(locale === "zh" ? "zh-CN" : "en-MY", {
@@ -56,11 +152,20 @@ export default function TournamentRegistrationClient({
   const [contactNumber, setContactNumber] = useState("");
   const [teamName, setTeamName] = useState("");
   const [proofFile, setProofFile] = useState<File | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
+  const [draftProofFileName, setDraftProofFileName] = useState<string | null>(null);
   const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
+  const draftBaselineRef = useRef<RegistrationDraftValues | null>(null);
 
   const load = useCallback(async () => {
     if (!supabase) return;
     setLoading(true);
+    setDraftReady(false);
+    setDraftRestored(false);
+    setDraftSavedAt(null);
+    setDraftProofFileName(null);
     const lookupColumn = tournamentLookupColumn(id);
     const { data, error: tournamentError } = await supabase
       .from("tournaments")
@@ -92,23 +197,70 @@ export default function TournamentRegistrationClient({
       inferTournamentEventType(next),
     );
     const phone = session?.user.phone ? displayMyPhone(session.user.phone) : "";
-    setExisting(registration);
-    setEmail(registration?.email ?? session?.user.email ?? "");
-    setContactNumber(registration?.contact_number ?? phone);
-    setTeamName(registration?.team_name ?? "");
-    setCustomAnswers(
-      Object.fromEntries(
-        config.customFields.map((field) => [
-          field.id,
-          registration?.custom_answers?.[field.id] ?? "",
-        ]),
-      ),
+    const defaultAnswers = Object.fromEntries(
+      config.customFields.map((field) => [
+        field.id,
+        registration?.custom_answers?.[field.id] ?? "",
+      ]),
     );
+    const baseline: RegistrationDraftValues = {
+      email: registration?.email ?? session?.user.email ?? "",
+      contactNumber: registration?.contact_number ?? phone,
+      teamName: registration?.team_name ?? "",
+      customAnswers: defaultAnswers,
+      proofFileName: null,
+    };
+    const draft = readRegistrationDraft(next.id, profile.id);
+    const registrationUpdatedAt = registration?.updated_at ? Date.parse(registration.updated_at) || 0 : 0;
+    const restoreDraft = !!draft && draft.savedAt > registrationUpdatedAt && hasRegistrationDraftContent(draft);
+    const restoredAnswers = Object.fromEntries(
+      config.customFields.map((field) => [
+        field.id,
+        restoreDraft ? draft?.customAnswers[field.id] ?? defaultAnswers[field.id] ?? "" : defaultAnswers[field.id] ?? "",
+      ]),
+    );
+
+    draftBaselineRef.current = baseline;
+    setExisting(registration);
+    setEmail(restoreDraft ? draft?.email ?? baseline.email : baseline.email);
+    setContactNumber(restoreDraft ? draft?.contactNumber ?? baseline.contactNumber : baseline.contactNumber);
+    setTeamName(restoreDraft ? draft?.teamName ?? baseline.teamName : baseline.teamName);
+    setCustomAnswers(restoredAnswers);
+    setDraftRestored(restoreDraft);
+    setDraftSavedAt(restoreDraft ? draft?.savedAt ?? null : null);
+    setDraftProofFileName(restoreDraft ? draft?.proofFileName ?? null : null);
+    setDraftReady(true);
   }, [id, profile, session?.user.email, session?.user.phone, t.hostError]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!draftReady || !item?.id || !profile?.id) return;
+    const current: RegistrationDraftValues = {
+      email,
+      contactNumber,
+      teamName,
+      customAnswers,
+      proofFileName: draftProofFileName,
+    };
+    const baseline = draftBaselineRef.current;
+    if (!hasRegistrationDraftContent(current) || (baseline && registrationDraftValuesEqual(current, baseline))) {
+      clearRegistrationDraft(item.id, profile.id);
+      setDraftSavedAt(null);
+      return;
+    }
+    const savedAt = Date.now();
+    writeRegistrationDraft({
+      version: REGISTRATION_DRAFT_VERSION,
+      tournamentId: item.id,
+      profileId: profile.id,
+      savedAt,
+      ...current,
+    });
+    setDraftSavedAt(savedAt);
+  }, [contactNumber, customAnswers, draftProofFileName, draftReady, email, item?.id, profile?.id, teamName]);
 
   const config = useMemo(
     () =>
@@ -127,6 +279,7 @@ export default function TournamentRegistrationClient({
   const changeProof = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0] ?? null;
     setProofFile(null);
+    setDraftProofFileName(null);
     setError(null);
     if (!file) return;
     const problem = checkTournamentRegistrationProof(file);
@@ -141,6 +294,7 @@ export default function TournamentRegistrationClient({
       return;
     }
     setProofFile(file);
+    setDraftProofFileName(file.name);
   };
 
   const submit = async (event: React.FormEvent) => {
@@ -232,6 +386,11 @@ export default function TournamentRegistrationClient({
 
     const status = data === "waitlisted" ? t.hostYouWaitlisted : t.hostYouJoined;
     setSuccess(t.registrationSubmitted.replace("{status}", status));
+    clearRegistrationDraft(item.id, profile.id);
+    setDraftReady(false);
+    setDraftRestored(false);
+    setDraftSavedAt(null);
+    setDraftProofFileName(null);
     setProofFile(null);
     await load();
     window.setTimeout(() => {
@@ -246,6 +405,7 @@ export default function TournamentRegistrationClient({
   if (loading) return <p className="py-16 text-center text-sm text-ink-dim">{dict.admin.loading}</p>;
   if (!item) return <p className="py-16 text-center text-sm text-ink-dim">{t.notFound}</p>;
   const detailPath = tournamentPath(locale, item, "", id);
+  const draftProofLabel = draftProofFileName ? ` (${draftProofFileName})` : "";
 
   if (!profile) {
     return (
@@ -348,6 +508,14 @@ export default function TournamentRegistrationClient({
           <div>
             <div className="font-display text-sm font-bold tracking-wider">{t.registrationTitle}</div>
             <p className="mt-1 text-xs text-ink-dim">{t.registrationIntro}</p>
+            {draftReady && !success && (
+              <p className="mt-2 rounded-md border border-accent-2/30 bg-accent-2/10 px-3 py-2 text-[11px] leading-relaxed text-ink-dim">
+                {draftRestored ? t.registrationDraftRestored : t.registrationDraftAutosave}
+              </p>
+            )}
+            {draftSavedAt && !success && (
+              <p className="mt-1 text-[11px] font-semibold text-accent-2">{t.registrationDraftSaved}</p>
+            )}
           </div>
 
           {success && <p className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-xs font-semibold text-accent">{success}</p>}
@@ -393,6 +561,11 @@ export default function TournamentRegistrationClient({
             <p className="mt-1 text-[11px] text-ink-dim">
               {existing?.payment_proof_path ? t.registrationExistingProof : t.registrationPaymentProofHint}
             </p>
+            {draftRestored && !proofFile && (
+              <p className="mt-1 text-[11px] font-semibold text-accent-2">
+                {t.registrationDraftProofReminder.replace("{file}", draftProofLabel)}
+              </p>
+            )}
           </div>
 
           {config.customFields.map((field) => (
