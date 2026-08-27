@@ -136,6 +136,7 @@ export interface TournamentPlayer {
   user_id: string;
   status: "joined" | "waitlisted";
   seed: number | null;
+  lineup_name: string | null;
   /** Group-stage pool (1-8) once assign_group_stage_pools runs; null for every other format. */
   pool_no: number | null;
   created_at: string;

@@ -1,4 +1,5 @@
 import type { CommunityTournament, TournamentEventType, TournamentFormat } from "./supabase";
+import { profileDisplayName } from "./profileName";
 import {
   addTeamBladerDefaultCustomFields,
   normalizeTournamentRegistrationConfig,
@@ -33,6 +34,14 @@ export function tournamentUsesTeamEntrants(
   format: TournamentFormat,
 ) {
   return eventType === "team" || format === "partner";
+}
+
+export function tournamentEntrantDisplayName(
+  player: Pick<NonNullable<CommunityTournament["players"]>[number], "lineup_name" | "profile">,
+  useTeamName: boolean,
+) {
+  const lineupName = typeof player.lineup_name === "string" ? player.lineup_name.trim() : "";
+  return useTeamName && lineupName ? lineupName : profileDisplayName(player.profile);
 }
 
 export function registrationConfigForEventType(

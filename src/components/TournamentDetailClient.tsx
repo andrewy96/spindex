@@ -36,6 +36,7 @@ import {
 } from "@/lib/tournamentRegistration";
 import { canAccessBeyliveControl } from "@/lib/beyliveAccess";
 import {
+  tournamentEntrantDisplayName,
   inferTournamentEventType,
   registrationConfigForEventType,
   registrationConfigWithTeamDefaults,
@@ -362,10 +363,11 @@ export default function TournamentDetailClient({
     normalizeTournamentRegistrationConfig(item.registration_config),
     detailEventType,
   );
+  const detailUsesTeamEntrants = tournamentUsesTeamEntrants(detailEventType, item.format);
   const detailEntrantLabel =
-    tournamentUsesTeamEntrants(detailEventType, item.format)
-      ? t.formatEntrantsTeams
-      : undefined;
+    detailUsesTeamEntrants ? t.formatEntrantsTeams : undefined;
+  const entrantName = (player: (typeof players)[number]) =>
+    tournamentEntrantDisplayName(player, detailUsesTeamEntrants);
   const poolEntrantLabel = detailEntrantLabel ? "teams" : "players";
   const poolPlacedLabel = detailEntrantLabel ? "any team" : "anyone";
   const editEventType: TournamentEventType = format === "partner" ? "team" : eventType;
@@ -1168,7 +1170,7 @@ export default function TournamentDetailClient({
                 {joined.map((p, i) => (
                   <li key={p.user_id} className="flex items-center justify-between gap-2 rounded bg-panel px-2 py-1">
                     <span className="min-w-0 truncate">
-                      #{p.seed ?? i + 1} {profileDisplayName(p.profile)}
+                      #{p.seed ?? i + 1} {entrantName(p)}
                       <span className="ml-2 font-mono text-[10px] text-accent-2">
                         {p.profile?.player_code ?? ""}
                       </span>
@@ -1202,7 +1204,7 @@ export default function TournamentDetailClient({
                 <ol className="space-y-1 text-xs text-ink-dim">
                   {waitlisted.map((p) => (
                     <li key={p.user_id} className="flex items-center justify-between gap-2 rounded bg-panel px-2 py-1">
-                      <span className="min-w-0 truncate">{profileDisplayName(p.profile)}</span>
+                      <span className="min-w-0 truncate">{entrantName(p)}</span>
                       {isHost && item.status === "open" && (
                         <button
                           onClick={() => removePlayer(p.user_id)}
@@ -1516,7 +1518,7 @@ export default function TournamentDetailClient({
                       <div className="grid gap-1.5">
                         {members.map((p) => (
                           <div key={p.user_id} className="flex items-center justify-between gap-2 text-xs">
-                            <span className="min-w-0 truncate text-ink-dim">{profileDisplayName(p.profile)}</span>
+                            <span className="min-w-0 truncate text-ink-dim">{entrantName(p)}</span>
                             {isHost && (
                               <select
                                 value={poolNo}
@@ -1545,7 +1547,7 @@ export default function TournamentDetailClient({
                         .filter((p) => p.pool_no == null)
                         .map((p) => (
                           <div key={p.user_id} className="text-xs text-ink-dim">
-                            {profileDisplayName(p.profile)}
+                            {entrantName(p)}
                           </div>
                         ))}
                     </div>
@@ -1567,7 +1569,7 @@ export default function TournamentDetailClient({
             <PartnerBattleRunner
               locale={locale}
               tournamentId={item.id}
-              seedNames={joined.map((p) => profileDisplayName(p.profile))}
+              seedNames={joined.map((p) => entrantName(p))}
               canManage={isHost}
             />
           </div>

@@ -26,6 +26,7 @@ import {
   TournamentRegistrationConfig,
 } from "@/lib/tournamentRegistration";
 import {
+  tournamentEntrantDisplayName,
   inferTournamentEventType,
   registrationConfigForEventType,
   registrationConfigWithTeamDefaults,
@@ -549,10 +550,9 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
             const past = isPast(item);
             const full = joined.length >= item.max_players;
             const itemEventType = inferTournamentEventType(item);
+            const itemUsesTeamEntrants = tournamentUsesTeamEntrants(itemEventType, item.format);
             const itemEntrantLabel =
-              tournamentUsesTeamEntrants(itemEventType, item.format)
-                ? t.formatEntrantsTeams
-                : undefined;
+              itemUsesTeamEntrants ? t.formatEntrantsTeams : undefined;
             const statusLabel =
               item.status === "cancelled"
                 ? t.statusCancelled
@@ -628,7 +628,7 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
                     <ol className="grid gap-1 text-xs text-ink-dim sm:grid-cols-2">
                       {joined.slice(0, 12).map((p, i) => (
                         <li key={p.user_id} className="rounded bg-panel px-2 py-1">
-                          #{p.seed ?? i + 1} {profileDisplayName(p.profile)}
+                          #{p.seed ?? i + 1} {tournamentEntrantDisplayName(p, itemUsesTeamEntrants)}
                         </li>
                       ))}
                     </ol>
