@@ -32,6 +32,7 @@ import {
   registrationConfigWithTeamDefaults,
   tournamentUsesTeamEntrants,
 } from "@/lib/tournamentEvent";
+import { tournamentPath } from "@/lib/tournamentRouting";
 
 const inputCls =
   "w-full rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent";
@@ -351,10 +352,10 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
   const formatLabel = (key: TournamentFormat) =>
     formats.find((f) => f.key === key)?.label ?? key;
 
-  const copyShareLink = async (id: string) => {
-    const url = `${window.location.origin}/${locale}/tournaments/${id}`;
+  const copyShareLink = async (item: CommunityTournament) => {
+    const url = `${window.location.origin}${tournamentPath(locale, item)}`;
     await navigator.clipboard.writeText(url);
-    setCopiedId(id);
+    setCopiedId(item.id);
     window.setTimeout(() => setCopiedId(null), 1600);
   };
 
@@ -635,13 +636,13 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
                   )}
                 </div>
                 <div className="mt-auto flex flex-wrap gap-2">
-                  <Link href={`/${locale}/tournaments/${item.id}`} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:border-accent/60">
+                  <Link href={tournamentPath(locale, item)} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:border-accent/60">
                     {t.view}
                   </Link>
-                  <Link href={`/${locale}/tournaments/${item.id}/live`} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
+                  <Link href={tournamentPath(locale, item, "/live")} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
                     BEYLIVE
                   </Link>
-                  <button onClick={() => copyShareLink(item.id)} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent-2 transition hover:border-accent-2/60">
+                  <button onClick={() => copyShareLink(item)} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent-2 transition hover:border-accent-2/60">
                     {copiedId === item.id ? t.copied : t.shareLink}
                   </button>
                   {!profile ? null : mine && !past ? (
@@ -657,7 +658,7 @@ export default function TournamentHostClient({ locale, dict }: { locale: Locale;
                       {t.tournamentFull}
                     </span>
                   ) : item.status === "open" && !past ? (
-                    <Link href={`/${locale}/tournaments/${item.id}/register`} className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110">
+                    <Link href={tournamentPath(locale, item, "/register")} className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110">
                       {t.registerTournament}
                     </Link>
                   ) : null}

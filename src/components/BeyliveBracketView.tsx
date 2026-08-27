@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Locale } from "@/i18n";
 import { BeyliveMatch } from "@/lib/supabase";
+import { tournamentPath } from "@/lib/tournamentRouting";
 import {
   beyliveKnockoutRoundLabels,
   beyliveParticipantCode,
@@ -173,7 +174,7 @@ function MatchNode({
   currentRound?: number;
 }) {
   const players = [...(match.players ?? [])].sort((a, b) => a.slot_no - b.slot_no);
-  const href = `/${locale}/tournaments/${tournamentId}/matches/${match.id}`;
+  const href = tournamentPath(locale, null, `/matches/${match.id}`, tournamentId);
 
   return (
     <Link

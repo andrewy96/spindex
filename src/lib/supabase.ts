@@ -192,6 +192,7 @@ export interface BeyliveStadium {
 
 export interface CommunityTournament {
   id: string;
+  slug: string | null;
   host: string;
   name: string;
   city: string;

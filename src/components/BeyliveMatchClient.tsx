@@ -35,12 +35,18 @@ import {
 import { profileDisplayName } from "@/lib/profileName";
 import { BEYLIVE_SYNC_EVENT, beyliveSyncTopic, broadcastBeyliveRefresh } from "@/lib/beyliveRealtime";
 import { canAccessBeyliveControl } from "@/lib/beyliveAccess";
+import { tournamentLookupColumn, tournamentPath } from "@/lib/tournamentRouting";
 import QrCodeBadge from "./QrCodeBadge";
 
 const FINISHES = BEYLIVE_FINISHES;
 
 type FormatAwareBeyliveMatch = BeyliveMatch & { tournament_format?: TournamentFormat | null };
-type MatchTournamentAccess = { host: string; format: TournamentFormat | null };
+type MatchTournamentAccess = {
+  id: string;
+  slug: string | null;
+  host: string;
+  format: TournamentFormat | null;
+};
 
 function matchStageLabel(match: BeyliveMatch, tournamentFormat?: TournamentFormat | null) {
   const format = tournamentFormat ?? (match as FormatAwareBeyliveMatch).tournament_format ?? null;
@@ -206,35 +212,41 @@ export default function BeyliveMatchClient({
 
   const load = useCallback(async () => {
     if (!supabase) return;
-    const [{ data }, { data: partnerData }, { data: tournamentData }, { data: judgeData }] = await Promise.all([
-      supabase
-        .from("beylive_matches")
-        .select(BEYLIVE_MATCH_SELECT)
-        .eq("id", matchId)
-        .maybeSingle(),
-      supabase
-        .from("partner_battles")
-        .select("state")
-        .eq("tournament_id", tournamentId)
-        .maybeSingle(),
-      supabase
-        .from("tournaments")
-        .select("host,format")
-        .eq("id", tournamentId)
-        .maybeSingle(),
-      profile?.id
-        ? supabase
-            .from("beylive_judges")
-            .select("role")
-            .eq("tournament_id", tournamentId)
-            .eq("user_id", profile.id)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
-    ]);
+    const { data: tournamentData } = await supabase
+      .from("tournaments")
+      .select("id,slug,host,format")
+      .eq(tournamentLookupColumn(tournamentId), tournamentId)
+      .maybeSingle();
+    const resolvedTournamentId = String(tournamentData?.id ?? "");
+    const [{ data }, { data: partnerData }, { data: judgeData }] = resolvedTournamentId
+      ? await Promise.all([
+          supabase
+            .from("beylive_matches")
+            .select(BEYLIVE_MATCH_SELECT)
+            .eq("id", matchId)
+            .eq("tournament_id", resolvedTournamentId)
+            .maybeSingle(),
+          supabase
+            .from("partner_battles")
+            .select("state")
+            .eq("tournament_id", resolvedTournamentId)
+            .maybeSingle(),
+          profile?.id
+            ? supabase
+                .from("beylive_judges")
+                .select("role")
+                .eq("tournament_id", resolvedTournamentId)
+                .eq("user_id", profile.id)
+                .maybeSingle()
+            : Promise.resolve({ data: null }),
+        ])
+      : [{ data: null }, { data: null }, { data: null }];
     const format = (tournamentData?.format as TournamentFormat | undefined) ?? null;
     setTournamentAccess(
       tournamentData
         ? {
+            id: String(tournamentData.id),
+            slug: typeof tournamentData.slug === "string" ? tournamentData.slug : null,
             host: String(tournamentData.host),
             format,
           }
@@ -251,7 +263,7 @@ export default function BeyliveMatchClient({
   }, [load]);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase || !tournamentAccess?.id) return;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     const refresh = () => {
       if (refreshTimer) clearTimeout(refreshTimer);
@@ -269,10 +281,10 @@ export default function BeyliveMatchClient({
       .on("postgres_changes", { event: "*", schema: "public", table: "beylive_matches", filter: `id=eq.${matchId}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_players", filter: `match_id=eq.${matchId}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_rounds", filter: `match_id=eq.${matchId}` }, refresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "partner_battles", filter: `tournament_id=eq.${tournamentId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "partner_battles", filter: `tournament_id=eq.${tournamentAccess.id}` }, refresh)
       .subscribe();
     const syncChannel = supabase
-      .channel(beyliveSyncTopic(tournamentId))
+      .channel(beyliveSyncTopic(tournamentAccess.id))
       .on("broadcast", { event: BEYLIVE_SYNC_EVENT }, refresh)
       .subscribe((status) => {
         if (status === "SUBSCRIBED") load();
@@ -293,7 +305,7 @@ export default function BeyliveMatchClient({
       supabase?.removeChannel(channel);
       supabase?.removeChannel(syncChannel);
     };
-  }, [load, matchId, tournamentId]);
+  }, [load, matchId, tournamentAccess?.id]);
 
   const players = useMemo(
     () => [...(match?.players ?? [])].sort((a, b) => a.slot_no - b.slot_no),
@@ -324,7 +336,7 @@ export default function BeyliveMatchClient({
       return;
     }
     load();
-    void broadcastBeyliveRefresh(supabase, tournamentId, { matchId, reason: label });
+    void broadcastBeyliveRefresh(supabase, tournamentAccess?.id ?? tournamentId, { matchId, reason: label });
   };
 
   const addPoint = (userId: string, finish: Finish) => {
@@ -370,7 +382,7 @@ export default function BeyliveMatchClient({
   };
 
   const reportLocalPartnerMatch = async (scores: Record<string, number>) => {
-    if (!supabase || !localPartnerState || !localMatch || !canSeeBeyliveControl) return;
+    if (!supabase || !localPartnerState || !localMatch || !canSeeBeyliveControl || !tournamentAccess?.id) return;
 
     const nextState = scoreLocalPartnerMatch(localPartnerState, localMatch.id, scores);
     if (!nextState) {
@@ -383,7 +395,7 @@ export default function BeyliveMatchClient({
     const { error: stateError } = await supabase
       .from("partner_battles")
       .upsert({
-        tournament_id: tournamentId,
+        tournament_id: tournamentAccess.id,
         state: nextState,
         updated_by: profile?.id ?? null,
         updated_at: new Date().toISOString(),
@@ -403,12 +415,12 @@ export default function BeyliveMatchClient({
         current_round: nextState.round ?? localMatch.round,
         target_score: PARTNER_WIN_SCORE,
       })
-      .eq("id", tournamentId);
+      .eq("id", tournamentAccess.id);
 
     setBusy(null);
     setLocalPartnerState(nextState);
     load();
-    void broadcastBeyliveRefresh(supabase, tournamentId, { matchId, reason: "local-partner-score" });
+    void broadcastBeyliveRefresh(supabase, tournamentAccess.id, { matchId, reason: "local-partner-score" });
   };
 
   if (!enabled || !supabase) {
@@ -416,11 +428,16 @@ export default function BeyliveMatchClient({
   }
   if (loading) return <p className="py-16 text-center text-sm text-ink-dim">Loading match...</p>;
   if (!match && !localMatch) return <p className="py-16 text-center text-sm text-ink-dim">Match not found.</p>;
+
+  const routeTournament = tournamentAccess
+    ? { id: tournamentAccess.id, slug: tournamentAccess.slug }
+    : null;
+
   if (!canSeeBeyliveControl) {
     return (
       <div className="mx-auto max-w-3xl">
         <div className="mb-5 flex flex-wrap items-center gap-2">
-          <Link href={`/${locale}/tournaments/${tournamentId}/live`} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
+          <Link href={tournamentPath(locale, routeTournament, "/live", tournamentId)} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
             Public Live
           </Link>
         </div>
@@ -438,10 +455,10 @@ export default function BeyliveMatchClient({
     return (
       <div className="mx-auto max-w-3xl">
         <div className="mb-5 flex flex-wrap items-center gap-2">
-          <Link href={`/${locale}/tournaments/${tournamentId}/control`} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
+          <Link href={tournamentPath(locale, routeTournament, "/control", tournamentId)} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
             BEYLIVE Control
           </Link>
-          <Link href={`/${locale}/tournaments/${tournamentId}/live`} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
+          <Link href={tournamentPath(locale, routeTournament, "/live", tournamentId)} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
             Public Live
           </Link>
         </div>
@@ -466,10 +483,10 @@ export default function BeyliveMatchClient({
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <Link href={`/${locale}/tournaments/${tournamentId}/control`} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
+        <Link href={tournamentPath(locale, routeTournament, "/control", tournamentId)} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
           BEYLIVE Control
         </Link>
-        <Link href={`/${locale}/tournaments/${tournamentId}/live`} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
+        <Link href={tournamentPath(locale, routeTournament, "/live", tournamentId)} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
           Public Live
         </Link>
       </div>

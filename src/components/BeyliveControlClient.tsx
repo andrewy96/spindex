@@ -71,6 +71,7 @@ import BeyliveBracketView from "./BeyliveBracketView";
 import QrCodeBadge from "./QrCodeBadge";
 import SharePodiumModal from "./SharePodiumModal";
 import { PodiumCardData, shareDateLabel } from "@/lib/shareCard";
+import { tournamentLookupColumn, tournamentPath, tournamentRouteParam } from "@/lib/tournamentRouting";
 
 const BEYLIVE_JUDGE_SELECT =
   "*, profile:profiles!beylive_judges_user_id_fkey(*)";
@@ -372,7 +373,7 @@ function MatchCard({
           </>
         )}
         <Link
-          href={`/${locale}/tournaments/${id}/matches/${match.id}`}
+          href={tournamentPath(locale, null, `/matches/${match.id}`, id)}
           className="clip-x border border-edge bg-panel-2 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink"
         >
           Full view
@@ -388,7 +389,7 @@ function MatchCard({
           </a>
         ) : (
           <Link
-            href={`/${locale}/tournaments/${id}/live`}
+            href={tournamentPath(locale, null, "/live", id)}
             className="clip-x border border-edge bg-panel-2 px-3 py-1.5 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink"
           >
             View live
@@ -585,13 +586,13 @@ function LocalPartnerMatchCard({
 
       <div className="mt-3 flex flex-wrap gap-2">
         <Link
-          href={`/${locale}/tournaments/${tournamentId}/matches/${match.id}`}
+          href={tournamentPath(locale, null, `/matches/${match.id}`, tournamentId)}
           className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20"
         >
           Judge page
         </Link>
         <Link
-          href={`/${locale}/tournaments/${tournamentId}/live`}
+          href={tournamentPath(locale, null, "/live", tournamentId)}
           className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink"
         >
           View live
@@ -638,25 +639,37 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
   const [idToolsOpen, setIdToolsOpen] = useState(false);
   const [bracketOverviewOpen, setBracketOverviewOpen] = useState(false);
   const [poolStandingsOpen, setPoolStandingsOpen] = useState(true);
-  const partnerCacheKey = useMemo(() => `spindex.partner-battle.${id}`, [id]);
+  const resolvedTournamentId = tournament?.id ?? "";
+  const routeParam = tournamentRouteParam(tournament, id);
+  const partnerCacheKey = useMemo(
+    () => `spindex.partner-battle.${resolvedTournamentId || id}`,
+    [id, resolvedTournamentId],
+  );
 
   const load = useCallback(async () => {
     if (!supabase) return;
-    const [{ data: tData }, { data: mData }, { data: jData }] = await Promise.all([
-      supabase.from("tournaments").select(TOURNAMENT_SELECT).eq("id", id).maybeSingle(),
-      supabase
-        .from("beylive_matches")
-        .select(BEYLIVE_MATCH_SELECT)
-        .eq("tournament_id", id)
-        .order("round_no", { ascending: true })
-        .order("match_no", { ascending: true }),
-      supabase
-        .from("beylive_judges")
-        .select(BEYLIVE_JUDGE_SELECT)
-        .eq("tournament_id", id)
-        .order("created_at", { ascending: true }),
-    ]);
-    setTournament((tData as unknown as CommunityTournament | null) ?? null);
+    const { data: tData } = await supabase
+      .from("tournaments")
+      .select(TOURNAMENT_SELECT)
+      .eq(tournamentLookupColumn(id), id)
+      .maybeSingle();
+    const nextTournament = (tData as unknown as CommunityTournament | null) ?? null;
+    const [{ data: mData }, { data: jData }] = nextTournament
+      ? await Promise.all([
+          supabase
+            .from("beylive_matches")
+            .select(BEYLIVE_MATCH_SELECT)
+            .eq("tournament_id", nextTournament.id)
+            .order("round_no", { ascending: true })
+            .order("match_no", { ascending: true }),
+          supabase
+            .from("beylive_judges")
+            .select(BEYLIVE_JUDGE_SELECT)
+            .eq("tournament_id", nextTournament.id)
+            .order("created_at", { ascending: true }),
+        ])
+      : [{ data: [] }, { data: [] }];
+    setTournament(nextTournament);
     setMatches((mData as unknown as BeyliveMatch[]) ?? []);
     setJudges((jData as unknown as BeyliveJudge[]) ?? []);
     setLoading(false);
@@ -667,11 +680,12 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
   }, [load]);
 
   useEffect(() => {
+    if (!resolvedTournamentId) return;
     let active = true;
     setJudgeRoleLoading(true);
 
     const loadJudgeRole = async () => {
-      if (!supabase || !profile?.id) {
+      if (!supabase || !profile?.id || !resolvedTournamentId) {
         setCurrentJudge(null);
         setJudgeRole(null);
         setJudgeRoleLoading(false);
@@ -680,7 +694,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
       const { data } = await supabase
         .from("beylive_judges")
         .select(BEYLIVE_JUDGE_SELECT)
-        .eq("tournament_id", id)
+        .eq("tournament_id", resolvedTournamentId)
         .eq("user_id", profile.id)
         .maybeSingle();
       if (active) {
@@ -692,20 +706,20 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     };
 
     loadJudgeRole();
-    if (!supabase || !profile?.id) {
+    if (!supabase || !profile?.id || !resolvedTournamentId) {
       return () => {
         active = false;
       };
     }
     const channel = supabase
-      .channel(`beylive-judge-role-${id}-${profile.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_judges", filter: `tournament_id=eq.${id}` }, loadJudgeRole)
+      .channel(`beylive-judge-role-${resolvedTournamentId}-${profile.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_judges", filter: `tournament_id=eq.${resolvedTournamentId}` }, loadJudgeRole)
       .subscribe();
     return () => {
       active = false;
       supabase?.removeChannel(channel);
     };
-  }, [id, profile?.id]);
+  }, [profile?.id, resolvedTournamentId]);
 
   useEffect(() => {
     if (!tournament) return;
@@ -764,7 +778,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
       const { data } = await supabase
         .from("partner_battles")
         .select("state")
-        .eq("tournament_id", id)
+        .eq("tournament_id", resolvedTournamentId)
         .maybeSingle();
       if (data?.state) applyState(data.state as LocalPartnerState);
     };
@@ -778,14 +792,14 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     }
 
     const channel = supabase
-      .channel(`partner-battle-control-${id}`)
+      .channel(`partner-battle-control-${resolvedTournamentId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "partner_battles",
-          filter: `tournament_id=eq.${id}`,
+          filter: `tournament_id=eq.${resolvedTournamentId}`,
         },
         (payload) => {
           const state = (payload.new as { state?: LocalPartnerState } | null)?.state;
@@ -798,10 +812,10 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
       active = false;
       supabase?.removeChannel(channel);
     };
-  }, [id, partnerCacheKey]);
+  }, [id, partnerCacheKey, resolvedTournamentId]);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase || !resolvedTournamentId) return;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     const refresh = () => {
       if (refreshTimer) clearTimeout(refreshTimer);
@@ -815,16 +829,16 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     };
 
     const channel = supabase
-      .channel(`beylive-control-${id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "tournaments", filter: `id=eq.${id}` }, refresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_matches", filter: `tournament_id=eq.${id}` }, refresh)
+      .channel(`beylive-control-${resolvedTournamentId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "tournaments", filter: `id=eq.${resolvedTournamentId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_matches", filter: `tournament_id=eq.${resolvedTournamentId}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_players" }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_rounds" }, refresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_judges", filter: `tournament_id=eq.${id}` }, refresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_stadiums", filter: `tournament_id=eq.${id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_judges", filter: `tournament_id=eq.${resolvedTournamentId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_stadiums", filter: `tournament_id=eq.${resolvedTournamentId}` }, refresh)
       .subscribe();
     const syncChannel = supabase
-      .channel(beyliveSyncTopic(id))
+      .channel(beyliveSyncTopic(resolvedTournamentId))
       .on("broadcast", { event: BEYLIVE_SYNC_EVENT }, refresh)
       .subscribe((status) => {
         if (status === "SUBSCRIBED") load();
@@ -845,7 +859,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
       supabase?.removeChannel(channel);
       supabase?.removeChannel(syncChannel);
     };
-  }, [id, load]);
+  }, [id, load, resolvedTournamentId]);
 
   const players = useMemo(
     () =>
@@ -1051,7 +1065,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
       }
       setScanMatchMessage(`Opening ${matchStageLabel(match, teamMode, groupStage || tournament?.format === "single_elimination", mainRoundLabels)} scoreboard.`);
       setScanPair([]);
-      router.push(`/${locale}/tournaments/${id}/matches/${match.id}`);
+      router.push(tournamentPath(locale, tournament, `/matches/${match.id}`, id));
       return;
     }
 
@@ -1059,7 +1073,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     if (localMatch) {
       setScanMatchMessage("Opening Partner Battle scoreboard.");
       setScanPair([]);
-      router.push(`/${locale}/tournaments/${id}/matches/${localMatch.id}`);
+      router.push(tournamentPath(locale, tournament, `/matches/${localMatch.id}`, id));
       return;
     }
 
@@ -1104,7 +1118,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
       return;
     }
     load();
-    void broadcastBeyliveRefresh(supabase, id, { reason: kind });
+    void broadcastBeyliveRefresh(supabase, tournament.id, { reason: kind });
   };
 
   const runScore = async (
@@ -1122,7 +1136,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
       return;
     }
     load();
-    void broadcastBeyliveRefresh(supabase, id, { matchId, reason: busyKey });
+    void broadcastBeyliveRefresh(supabase, resolvedTournamentId || id, { matchId, reason: busyKey });
   };
 
   const startMatch = (matchId: string) => {
@@ -1404,10 +1418,10 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
     return (
       <div>
         <div className="mb-5 flex flex-wrap items-center gap-2">
-          <Link href={`/${locale}/tournaments/${id}`} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
+          <Link href={tournamentPath(locale, tournament, "", id)} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
             Back to tournament
           </Link>
-          <Link href={`/${locale}/tournaments/${id}/live`} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
+          <Link href={tournamentPath(locale, tournament, "/live", id)} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
             Public BEYLIVE
           </Link>
         </div>
@@ -1424,10 +1438,10 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
   return (
     <div>
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <Link href={`/${locale}/tournaments/${id}`} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
+        <Link href={tournamentPath(locale, tournament, "", id)} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
           Back to tournament
         </Link>
-        <Link href={`/${locale}/tournaments/${id}/live`} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
+        <Link href={tournamentPath(locale, tournament, "/live", id)} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
           Public BEYLIVE
         </Link>
       </div>
@@ -1860,7 +1874,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
             <BeyliveBracketView
               matches={matches}
               locale={locale}
-              tournamentId={id}
+              tournamentId={routeParam}
               currentRound={currentRound}
               className="mt-4"
               framed={false}
@@ -2042,7 +2056,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                   state={localPartnerState}
                   canScore={canManage}
                   locale={locale}
-                  tournamentId={id}
+                  tournamentId={routeParam}
                   onScore={reportLocalPartnerMatch}
                 />
               ))}
@@ -2076,7 +2090,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                           groupStage={groupStage || tournament?.format === "single_elimination"}
                           mainRoundLabels={mainRoundLabels}
                           locale={locale}
-                          id={id}
+                          id={routeParam}
                           canScore={canScoreMatch(match)}
                           canEditStadium={hasHostControlAccess}
                           stadiums={stadiums}
@@ -2107,7 +2121,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                         groupStage={groupStage || tournament?.format === "single_elimination"}
                         mainRoundLabels={mainRoundLabels}
                         locale={locale}
-                        id={id}
+                        id={routeParam}
                         canScore={canScoreMatch(match)}
                         canEditStadium={hasHostControlAccess}
                         stadiums={stadiums}
@@ -2134,7 +2148,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                   groupStage={groupStage || tournament?.format === "single_elimination"}
                   mainRoundLabels={mainRoundLabels}
                   locale={locale}
-                  id={id}
+                  id={routeParam}
                   canScore={canScoreMatch(match)}
                   canEditStadium={hasHostControlAccess}
                   stadiums={stadiums}

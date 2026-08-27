@@ -8,6 +8,7 @@ import { CommunityTournament, supabase, TOURNAMENT_SELECT } from "@/lib/supabase
 import { beyliveFormatLabel, beyliveStadiums, beyliveStatusLabel, beyliveTeamCode, beyliveTeamName } from "@/lib/beylive";
 import { profileDisplayName } from "@/lib/profileName";
 import { canAccessBeyliveControl } from "@/lib/beyliveAccess";
+import { tournamentPath } from "@/lib/tournamentRouting";
 
 function fmtWhen(iso: string, locale: Locale) {
   return new Date(iso).toLocaleString(locale === "zh" ? "zh-CN" : "en-MY", {
@@ -186,11 +187,11 @@ export default function BeyliveHubClient({ locale }: { locale: Locale }) {
                       </div>
                     )}
                     <div className="mt-auto flex flex-wrap gap-2">
-                      <Link href={hasLivePage ? `/${locale}/tournaments/${item.id}/live` : `/${locale}/tournaments/${item.id}`} className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110">
+                      <Link href={hasLivePage ? tournamentPath(locale, item, "/live") : tournamentPath(locale, item)} className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110">
                         {hasLivePage ? "Watch BEYLIVE" : "View event"}
                       </Link>
                       {canSeeBeyliveControl && (
-                        <Link href={`/${locale}/tournaments/${item.id}/control`} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent-2 transition hover:border-accent-2/60">
+                        <Link href={tournamentPath(locale, item, "/control")} className="clip-x border border-edge bg-panel-2 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent-2 transition hover:border-accent-2/60">
                           Control
                         </Link>
                       )}

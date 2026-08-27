@@ -42,6 +42,7 @@ import {
   registrationConfigWithTeamDefaults,
   tournamentUsesTeamEntrants,
 } from "@/lib/tournamentEvent";
+import { tournamentLookupColumn, tournamentPath } from "@/lib/tournamentRouting";
 
 const inputCls =
   "w-full rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent";
@@ -230,10 +231,11 @@ export default function TournamentDetailClient({
   const load = useCallback(async () => {
     if (!supabase) return;
     setLoading(true);
+    const lookupColumn = tournamentLookupColumn(id);
     const { data, error: err } = await supabase
       .from("tournaments")
       .select(TOURNAMENT_SELECT)
-      .eq("id", id)
+      .eq(lookupColumn, id)
       .maybeSingle();
     setLoading(false);
     if (err) {
@@ -244,11 +246,11 @@ export default function TournamentDetailClient({
     setItem(next);
     if (next) fillForm(next);
 
-    if (profile) {
+    if (profile && next) {
       const { data: regData } = await supabase
         .from("tournament_registrations")
         .select("*, profile:profiles!tournament_registrations_user_id_fkey(*)")
-        .eq("tournament_id", id)
+        .eq("tournament_id", next.id)
         .order("created_at", { ascending: true });
       setRegistrations((regData as unknown as TournamentRegistration[]) ?? []);
     } else {
@@ -312,6 +314,7 @@ export default function TournamentDetailClient({
   // not accounts), so mirror that count/lineup into the header — kept live.
   useEffect(() => {
     if (!supabase || item?.format !== "partner") return;
+    const tournamentId = item.id;
     let active = true;
     const read = (state: { players?: { id: string; name: string }[] } | null) => {
       if (active) setPartnerRoster(Array.isArray(state?.players) ? state!.players! : []);
@@ -319,14 +322,14 @@ export default function TournamentDetailClient({
     supabase
       .from("partner_battles")
       .select("state")
-      .eq("tournament_id", id)
+      .eq("tournament_id", tournamentId)
       .maybeSingle()
       .then(({ data }) => read((data?.state as { players?: { id: string; name: string }[] }) ?? null));
     const channel = supabase
-      .channel(`partner_battles_hdr:${id}`)
+      .channel(`partner_battles_hdr:${tournamentId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "partner_battles", filter: `tournament_id=eq.${id}` },
+        { event: "*", schema: "public", table: "partner_battles", filter: `tournament_id=eq.${tournamentId}` },
         (payload) => read((payload.new as { state?: { players?: { id: string; name: string }[] } } | null)?.state ?? null)
       )
       .subscribe();
@@ -334,7 +337,7 @@ export default function TournamentDetailClient({
       active = false;
       supabase?.removeChannel(channel);
     };
-  }, [id, item?.format]);
+  }, [item?.format, item?.id]);
 
   if (!enabled) {
     return <div className="panel border-accent-2/40 p-5 text-sm text-ink-dim">{dict.auth.notConfigured}</div>;
@@ -351,6 +354,9 @@ export default function TournamentDetailClient({
   const mine = profile ? players.find((p) => p.user_id === profile.id) : null;
   const isHost = profile?.id === item.host;
   const canSeeBeyliveControl = canAccessBeyliveControl(profile, item);
+  const livePath = tournamentPath(locale, item, "/live", id);
+  const controlPath = tournamentPath(locale, item, "/control", id);
+  const registerPath = tournamentPath(locale, item, "/register", id);
   const joinedEntryCount = joined.length;
   const full = joinedEntryCount >= item.max_players;
   const hostRegisterSelectedPlayer = hostRegisterProfile
@@ -431,7 +437,7 @@ export default function TournamentDetailClient({
   };
 
   const copyShareLink = async () => {
-    await navigator.clipboard.writeText(window.location.href);
+    await navigator.clipboard.writeText(`${window.location.origin}${tournamentPath(locale, item, "", id)}`);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
   };
@@ -914,11 +920,11 @@ export default function TournamentDetailClient({
         <button onClick={copyShareLink} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-accent-2 transition hover:border-accent-2/60">
           {copied ? t.copied : t.shareLink}
         </button>
-        <Link href={`/${locale}/tournaments/${item.id}/live`} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
+        <Link href={livePath} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
           BEYLIVE
         </Link>
         {canSeeBeyliveControl && (
-          <Link href={`/${locale}/tournaments/${item.id}/control`} className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110">
+          <Link href={controlPath} className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110">
             BEYLIVE Control
           </Link>
         )}
@@ -1093,7 +1099,7 @@ export default function TournamentDetailClient({
                   {t.tournamentFull}
                 </span>
               ) : item.status === "open" ? (
-                <Link href={`/${locale}/tournaments/${item.id}/register`} className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110">
+                <Link href={registerPath} className="clip-x bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition hover:brightness-110">
                   {t.registerTournament}
                 </Link>
               ) : null}

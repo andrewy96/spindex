@@ -20,6 +20,7 @@ import {
   TOURNAMENT_REGISTRATION_PROOF_BUCKET,
 } from "@/lib/tournamentRegistration";
 import { inferTournamentEventType, registrationConfigForEventType } from "@/lib/tournamentEvent";
+import { tournamentLookupColumn, tournamentPath } from "@/lib/tournamentRouting";
 
 const inputCls =
   "w-full rounded-md border border-edge bg-panel px-3 py-2 text-sm outline-none transition placeholder:text-ink-dim/50 focus:border-accent";
@@ -60,10 +61,11 @@ export default function TournamentRegistrationClient({
   const load = useCallback(async () => {
     if (!supabase) return;
     setLoading(true);
+    const lookupColumn = tournamentLookupColumn(id);
     const { data, error: tournamentError } = await supabase
       .from("tournaments")
       .select(TOURNAMENT_SELECT)
-      .eq("id", id)
+      .eq(lookupColumn, id)
       .maybeSingle();
     setLoading(false);
     if (tournamentError) {
@@ -81,7 +83,7 @@ export default function TournamentRegistrationClient({
     const { data: regData } = await supabase
       .from("tournament_registrations")
       .select("*, profile:profiles!tournament_registrations_user_id_fkey(*)")
-      .eq("tournament_id", id)
+      .eq("tournament_id", next.id)
       .eq("user_id", profile.id)
       .maybeSingle();
     const registration = (regData as unknown as TournamentRegistration | null) ?? null;
@@ -233,7 +235,7 @@ export default function TournamentRegistrationClient({
     setProofFile(null);
     await load();
     window.setTimeout(() => {
-      router.push(`/${locale}/tournaments/${item.id}`);
+      router.push(tournamentPath(locale, item, "", id));
     }, 1000);
   };
 
@@ -243,11 +245,12 @@ export default function TournamentRegistrationClient({
 
   if (loading) return <p className="py-16 text-center text-sm text-ink-dim">{dict.admin.loading}</p>;
   if (!item) return <p className="py-16 text-center text-sm text-ink-dim">{t.notFound}</p>;
+  const detailPath = tournamentPath(locale, item, "", id);
 
   if (!profile) {
     return (
       <div>
-        <Link href={`/${locale}/tournaments/${id}`} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
+        <Link href={detailPath} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
           {t.back}
         </Link>
         <div className="panel mt-5 p-5">
@@ -269,7 +272,7 @@ export default function TournamentRegistrationClient({
   if (isHost) {
     return (
       <div>
-        <Link href={`/${locale}/tournaments/${id}`} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
+        <Link href={detailPath} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
           {t.back}
         </Link>
         <div className="panel mt-5 p-5">
@@ -283,7 +286,7 @@ export default function TournamentRegistrationClient({
   if (!config.enabled || item.status !== "open" || (isFull && !mine)) {
     return (
       <div>
-        <Link href={`/${locale}/tournaments/${id}`} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
+        <Link href={detailPath} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
           {t.back}
         </Link>
         <div className="panel mt-5 p-5">
@@ -297,7 +300,7 @@ export default function TournamentRegistrationClient({
   return (
     <div>
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <Link href={`/${locale}/tournaments/${id}`} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
+        <Link href={detailPath} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
           {t.back}
         </Link>
       </div>

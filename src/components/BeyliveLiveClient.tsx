@@ -53,6 +53,7 @@ import {
 import { profileDisplayName } from "@/lib/profileName";
 import { BEYLIVE_SYNC_EVENT, beyliveSyncTopic } from "@/lib/beyliveRealtime";
 import { canAccessBeyliveControl } from "@/lib/beyliveAccess";
+import { tournamentLookupColumn, tournamentPath, tournamentRouteParam } from "@/lib/tournamentRouting";
 import BeyliveBracketView from "./BeyliveBracketView";
 import SharePodiumModal from "./SharePodiumModal";
 import { PodiumCardData, shareDateLabel } from "@/lib/shareCard";
@@ -294,16 +295,21 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
 
   const load = useCallback(async () => {
     if (!supabase) return;
-    const [{ data: tData }, { data: mData }] = await Promise.all([
-      supabase.from("tournaments").select(TOURNAMENT_SELECT).eq("id", id).maybeSingle(),
-      supabase
-        .from("beylive_matches")
-        .select(BEYLIVE_MATCH_SELECT)
-        .eq("tournament_id", id)
-        .order("round_no", { ascending: true })
-        .order("match_no", { ascending: true }),
-    ]);
-    setTournament((tData as unknown as CommunityTournament | null) ?? null);
+    const { data: tData } = await supabase
+      .from("tournaments")
+      .select(TOURNAMENT_SELECT)
+      .eq(tournamentLookupColumn(id), id)
+      .maybeSingle();
+    const nextTournament = (tData as unknown as CommunityTournament | null) ?? null;
+    const { data: mData } = nextTournament
+      ? await supabase
+          .from("beylive_matches")
+          .select(BEYLIVE_MATCH_SELECT)
+          .eq("tournament_id", nextTournament.id)
+          .order("round_no", { ascending: true })
+          .order("match_no", { ascending: true })
+      : { data: [] };
+    setTournament(nextTournament);
     setMatches((mData as unknown as BeyliveMatch[]) ?? []);
     setLoading(false);
   }, [id]);
@@ -313,8 +319,10 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
   }, [load]);
 
   useEffect(() => {
+    const tournamentId = tournament?.id;
+    if (!tournamentId) return;
     let active = true;
-    const cacheKey = `spindex.partner-battle.${id}`;
+    const cacheKey = `spindex.partner-battle.${tournamentId}`;
 
     const applyState = (state: LocalPartnerState | null) => {
       if (!active) return;
@@ -339,7 +347,7 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
       const { data } = await supabase
         .from("partner_battles")
         .select("state")
-        .eq("tournament_id", id)
+        .eq("tournament_id", tournamentId)
         .maybeSingle();
       if (data?.state) applyState(data.state as LocalPartnerState);
     };
@@ -353,14 +361,14 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
     }
 
     const channel = supabase
-      .channel(`partner-battle-live-${id}`)
+      .channel(`partner-battle-live-${tournamentId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "partner_battles",
-          filter: `tournament_id=eq.${id}`,
+          filter: `tournament_id=eq.${tournamentId}`,
         },
         (payload) => {
           const state = (payload.new as { state?: LocalPartnerState } | null)?.state;
@@ -373,14 +381,15 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
       active = false;
       supabase?.removeChannel(channel);
     };
-  }, [id]);
+  }, [tournament?.id]);
 
   useEffect(() => {
     setHostName(window.location.hostname || "localhost");
   }, []);
 
   useEffect(() => {
-    if (!supabase) return;
+    const tournamentId = tournament?.id;
+    if (!supabase || !tournamentId) return;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     const refresh = () => {
       if (refreshTimer) clearTimeout(refreshTimer);
@@ -394,17 +403,17 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
     };
 
     const channel = supabase
-      .channel(`beylive-live-${id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "tournaments", filter: `id=eq.${id}` }, refresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_matches", filter: `tournament_id=eq.${id}` }, refresh)
+      .channel(`beylive-live-${tournamentId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "tournaments", filter: `id=eq.${tournamentId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_matches", filter: `tournament_id=eq.${tournamentId}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_players" }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "beylive_match_rounds" }, refresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_stadiums", filter: `tournament_id=eq.${id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beylive_stadiums", filter: `tournament_id=eq.${tournamentId}` }, refresh)
       .subscribe((status) => {
         if (status === "SUBSCRIBED") load();
       });
     const syncChannel = supabase
-      .channel(beyliveSyncTopic(id))
+      .channel(beyliveSyncTopic(tournamentId))
       .on("broadcast", { event: BEYLIVE_SYNC_EVENT }, refresh)
       .subscribe((status) => {
         if (status === "SUBSCRIBED") load();
@@ -426,7 +435,7 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
       supabase?.removeChannel(channel);
       supabase?.removeChannel(syncChannel);
     };
-  }, [id, load]);
+  }, [load, tournament?.id]);
 
   const dbStandings = useMemo(() => beyliveStandings(tournament, matches), [matches, tournament]);
   const rounds = useMemo(() => groupByRound(matches), [matches]);
@@ -521,15 +530,16 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
   if (loading) return <p className="py-16 text-center text-sm text-ink-dim">Loading BEYLIVE...</p>;
   if (!tournament) return <p className="py-16 text-center text-sm text-ink-dim">Tournament not found.</p>;
   const canSeeBeyliveControl = canAccessBeyliveControl(profile, tournament);
+  const routeParam = tournamentRouteParam(tournament, id);
 
   return (
     <div>
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <Link href={`/${locale}/tournaments/${id}`} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
+        <Link href={tournamentPath(locale, tournament, "", id)} className="clip-x border border-edge bg-panel px-4 py-2 font-display text-xs font-bold tracking-wider text-ink-dim transition hover:text-ink">
           Back to tournament
         </Link>
         {canSeeBeyliveControl && (
-          <Link href={`/${locale}/tournaments/${id}/control`} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
+          <Link href={tournamentPath(locale, tournament, "/control", id)} className="clip-x border border-accent/50 bg-accent/10 px-4 py-2 font-display text-xs font-bold tracking-wider text-accent transition hover:bg-accent/20">
             BEYLIVE Control
           </Link>
         )}
@@ -673,7 +683,7 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
         <BeyliveBracketView
           matches={matches}
           locale={locale}
-          tournamentId={id}
+          tournamentId={routeParam}
           currentRound={tournament.current_round ?? undefined}
           className="mt-4"
         />
