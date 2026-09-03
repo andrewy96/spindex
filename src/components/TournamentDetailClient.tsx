@@ -176,7 +176,7 @@ export default function TournamentDetailClient({
   const [hostRegisterError, setHostRegisterError] = useState<string | null>(null);
   const [hostRegisterSuccess, setHostRegisterSuccess] = useState<string | null>(null);
   const [teamNameEdit, setTeamNameEdit] = useState<{
-    registrationId: string;
+    key: string;
     userId: string;
     value: string;
   } | null>(null);
@@ -770,17 +770,32 @@ export default function TournamentDetailClient({
     }
     if (message === "player_required") return t.registrationPlayerRequired;
     if (message === "profile_not_found") return t.registrationPlayerNotFound;
-    if (message === "registration_not_found") return t.registrationNotFound;
+    if (message === "registration_not_found" || message === "player_not_found") return t.registrationNotFound;
     if (message === "invalid_profile") return t.registrationPlayerInvalid;
     if (message === "registration_closed" || message === "tournament_not_open") return t.registrationClosed;
     return message ? message.replace(/_/g, " ") : t.hostError;
   };
 
+  const registrationTeamNameEditKey = (registration: TournamentRegistration) =>
+    `registration:${registration.id}`;
+
+  const lineupTeamNameEditKey = (userId: string) => `lineup:${userId}`;
+
   const startTeamNameEdit = (registration: TournamentRegistration) => {
     setTeamNameEdit({
-      registrationId: registration.id,
+      key: registrationTeamNameEditKey(registration),
       userId: registration.user_id,
       value: registration.team_name ?? "",
+    });
+    setTeamNameEditError(null);
+    setTeamNameEditSuccessId(null);
+  };
+
+  const startLineupTeamNameEdit = (player: (typeof players)[number]) => {
+    setTeamNameEdit({
+      key: lineupTeamNameEditKey(player.user_id),
+      userId: player.user_id,
+      value: entrantName(player),
     });
     setTeamNameEditError(null);
     setTeamNameEditSuccessId(null);
@@ -793,11 +808,11 @@ export default function TournamentDetailClient({
 
   const saveTeamNameEdit = async (
     event: React.FormEvent,
-    registration: TournamentRegistration,
+    target: { key: string; userId: string },
   ) => {
     event.preventDefault();
     if (!supabase || !item || !isHost || teamNameEditBusy) return;
-    if (!teamNameEdit || teamNameEdit.registrationId !== registration.id) return;
+    if (!teamNameEdit || teamNameEdit.key !== target.key) return;
 
     const cleanTeamName = teamNameEdit.value.trim();
     if (detailRegistrationConfig.teamNameRequired && !cleanTeamName) {
@@ -808,10 +823,10 @@ export default function TournamentDetailClient({
     setTeamNameEditBusy(true);
     setTeamNameEditError(null);
     setTeamNameEditSuccessId(null);
-    const { error: updateError } = await supabase.rpc("host_update_tournament_registration_team_name", {
+    const { error: updateError } = await supabase.rpc("host_update_tournament_entrant_name", {
       tid: item.id,
-      p_user_id: registration.user_id,
-      p_team_name: cleanTeamName,
+      p_user_id: target.userId,
+      p_name: cleanTeamName,
     });
 
     if (updateError) {
@@ -821,11 +836,11 @@ export default function TournamentDetailClient({
     }
 
     setTeamNameEdit(null);
-    setTeamNameEditSuccessId(registration.id);
+    setTeamNameEditSuccessId(target.key);
     await load();
     setTeamNameEditBusy(false);
     window.setTimeout(() => {
-      setTeamNameEditSuccessId((current) => (current === registration.id ? null : current));
+      setTeamNameEditSuccessId((current) => (current === target.key ? null : current));
     }, 1800);
   };
 
@@ -1237,55 +1252,197 @@ export default function TournamentDetailClient({
               <p className="text-sm text-ink-dim">{t.noPlayers}</p>
             ) : (
               <ol className="space-y-1 text-sm text-ink-dim">
-                {joined.map((p, i) => (
-                  <li key={p.user_id} className="flex items-center justify-between gap-2 rounded bg-panel px-2 py-1">
-                    <span className="min-w-0 truncate">
-                      #{p.seed ?? i + 1} {entrantName(p)}
-                      <span className="ml-2 font-mono text-[10px] text-accent-2">
-                        {p.profile?.player_code ?? ""}
-                      </span>
-                      {p.profile?.is_walkin && (
-                        <span className="ml-2 rounded bg-panel-2 px-1.5 py-0.5 text-[9px] font-semibold text-ink-dim">
-                          walk-in
-                        </span>
+                {joined.map((p, i) => {
+                  const editKey = lineupTeamNameEditKey(p.user_id);
+                  const editingTeamName = teamNameEdit?.key === editKey;
+                  const canEditTeamName =
+                    isHost && item.status === "open" && detailUsesTeamEntrants;
+
+                  return (
+                    <li key={p.user_id} className="flex flex-wrap items-start justify-between gap-2 rounded bg-panel px-2 py-1">
+                      <div className="min-w-0 flex-1">
+                        {editingTeamName ? (
+                          <form
+                            onSubmit={(event) =>
+                              saveTeamNameEdit(event, { key: editKey, userId: p.user_id })
+                            }
+                            className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
+                          >
+                            <input
+                              value={teamNameEdit.value}
+                              onChange={(event) =>
+                                setTeamNameEdit((current) =>
+                                  current?.key === editKey
+                                    ? { ...current, value: event.target.value }
+                                    : current,
+                                )
+                              }
+                              className={`${inputCls} text-xs`}
+                              required
+                              maxLength={100}
+                              autoFocus
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                type="submit"
+                                disabled={teamNameEditBusy}
+                                className="clip-x bg-accent px-3 py-2 font-display text-[10px] font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+                              >
+                                {t.save}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelTeamNameEdit}
+                                disabled={teamNameEditBusy}
+                                className="clip-x border border-edge bg-panel-2 px-3 py-2 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink disabled:opacity-50"
+                              >
+                                {t.cancel}
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <div className="truncate">
+                            #{p.seed ?? i + 1} {entrantName(p)}
+                            <span className="ml-2 font-mono text-[10px] text-accent-2">
+                              {p.profile?.player_code ?? ""}
+                            </span>
+                            {p.profile?.is_walkin && (
+                              <span className="ml-2 rounded bg-panel-2 px-1.5 py-0.5 text-[9px] font-semibold text-ink-dim">
+                                walk-in
+                              </span>
+                            )}
+                            {(item.format === "group_stage" || item.format === "swiss") && p.pool_no != null && (
+                              <span className="ml-2 rounded bg-accent/10 px-1.5 py-0.5 text-[9px] font-semibold text-accent">
+                                Pool {p.pool_no}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {editingTeamName && teamNameEditError && (
+                          <p className="mt-1 text-xs font-semibold text-atk">{teamNameEditError}</p>
+                        )}
+                        {teamNameEditSuccessId === editKey && (
+                          <p className="mt-1 text-xs font-semibold text-accent">
+                            {t.registrationTeamNameUpdated}
+                          </p>
+                        )}
+                      </div>
+                      {isHost && item.status === "open" && (
+                        <div className="flex shrink-0 items-center gap-2">
+                          {canEditTeamName && !editingTeamName && (
+                            <button
+                              type="button"
+                              onClick={() => startLineupTeamNameEdit(p)}
+                              disabled={teamNameEditBusy}
+                              className="text-[10px] font-semibold text-ink-dim underline decoration-dotted transition hover:text-accent disabled:opacity-50"
+                            >
+                              {t.registrationTeamNameEdit}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removePlayer(p.user_id)}
+                            disabled={rosterBusy}
+                            className="text-[10px] font-semibold text-ink-dim underline decoration-dotted transition hover:text-atk disabled:opacity-50"
+                          >
+                            Remove
+                          </button>
+                        </div>
                       )}
-                      {(item.format === "group_stage" || item.format === "swiss") && p.pool_no != null && (
-                        <span className="ml-2 rounded bg-accent/10 px-1.5 py-0.5 text-[9px] font-semibold text-accent">
-                          Pool {p.pool_no}
-                        </span>
-                      )}
-                    </span>
-                    {isHost && item.status === "open" && (
-                      <button
-                        onClick={() => removePlayer(p.user_id)}
-                        disabled={rosterBusy}
-                        className="shrink-0 text-[10px] font-semibold text-ink-dim underline decoration-dotted transition hover:text-atk disabled:opacity-50"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ol>
             )}
             {item.format !== "partner" && waitlisted.length > 0 && (
               <>
                 <div className="mb-2 mt-4 font-display text-xs font-bold tracking-wider text-ink-dim">{t.hostWaitlisted}</div>
                 <ol className="space-y-1 text-xs text-ink-dim">
-                  {waitlisted.map((p) => (
-                    <li key={p.user_id} className="flex items-center justify-between gap-2 rounded bg-panel px-2 py-1">
-                      <span className="min-w-0 truncate">{entrantName(p)}</span>
-                      {isHost && item.status === "open" && (
-                        <button
-                          onClick={() => removePlayer(p.user_id)}
-                          disabled={rosterBusy}
-                          className="shrink-0 text-[10px] font-semibold text-ink-dim underline decoration-dotted transition hover:text-atk disabled:opacity-50"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </li>
-                  ))}
+                  {waitlisted.map((p) => {
+                    const editKey = lineupTeamNameEditKey(p.user_id);
+                    const editingTeamName = teamNameEdit?.key === editKey;
+                    const canEditTeamName =
+                      isHost && item.status === "open" && detailUsesTeamEntrants;
+
+                    return (
+                      <li key={p.user_id} className="flex flex-wrap items-start justify-between gap-2 rounded bg-panel px-2 py-1">
+                        <div className="min-w-0 flex-1">
+                          {editingTeamName ? (
+                            <form
+                              onSubmit={(event) =>
+                                saveTeamNameEdit(event, { key: editKey, userId: p.user_id })
+                              }
+                              className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
+                            >
+                              <input
+                                value={teamNameEdit.value}
+                                onChange={(event) =>
+                                  setTeamNameEdit((current) =>
+                                    current?.key === editKey
+                                      ? { ...current, value: event.target.value }
+                                      : current,
+                                  )
+                                }
+                                className={`${inputCls} text-xs`}
+                                required
+                                maxLength={100}
+                                autoFocus
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  type="submit"
+                                  disabled={teamNameEditBusy}
+                                  className="clip-x bg-accent px-3 py-2 font-display text-[10px] font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+                                >
+                                  {t.save}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={cancelTeamNameEdit}
+                                  disabled={teamNameEditBusy}
+                                  className="clip-x border border-edge bg-panel-2 px-3 py-2 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink disabled:opacity-50"
+                                >
+                                  {t.cancel}
+                                </button>
+                              </div>
+                            </form>
+                          ) : (
+                            <div className="truncate">{entrantName(p)}</div>
+                          )}
+                          {editingTeamName && teamNameEditError && (
+                            <p className="mt-1 text-xs font-semibold text-atk">{teamNameEditError}</p>
+                          )}
+                          {teamNameEditSuccessId === editKey && (
+                            <p className="mt-1 text-xs font-semibold text-accent">
+                              {t.registrationTeamNameUpdated}
+                            </p>
+                          )}
+                        </div>
+                        {isHost && item.status === "open" && (
+                          <div className="flex shrink-0 items-center gap-2">
+                            {canEditTeamName && !editingTeamName && (
+                              <button
+                                type="button"
+                                onClick={() => startLineupTeamNameEdit(p)}
+                                disabled={teamNameEditBusy}
+                                className="text-[10px] font-semibold text-ink-dim underline decoration-dotted transition hover:text-accent disabled:opacity-50"
+                              >
+                                {t.registrationTeamNameEdit}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removePlayer(p.user_id)}
+                              disabled={rosterBusy}
+                              className="text-[10px] font-semibold text-ink-dim underline decoration-dotted transition hover:text-atk disabled:opacity-50"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ol>
               </>
             )}
@@ -1515,9 +1672,14 @@ export default function TournamentDetailClient({
                         </div>
                         {detailRegistrationConfig.teamNameEnabled && (
                           <div className="mt-2">
-                            {teamNameEdit?.registrationId === registration.id ? (
+                            {teamNameEdit?.key === registrationTeamNameEditKey(registration) ? (
                               <form
-                                onSubmit={(event) => saveTeamNameEdit(event, registration)}
+                                onSubmit={(event) =>
+                                  saveTeamNameEdit(event, {
+                                    key: registrationTeamNameEditKey(registration),
+                                    userId: registration.user_id,
+                                  })
+                                }
                                 className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
                               >
                                 <div>
@@ -1528,7 +1690,7 @@ export default function TournamentDetailClient({
                                     value={teamNameEdit.value}
                                     onChange={(event) =>
                                       setTeamNameEdit((current) =>
-                                        current?.registrationId === registration.id
+                                        current?.key === registrationTeamNameEditKey(registration)
                                           ? { ...current, value: event.target.value }
                                           : current,
                                       )
@@ -1572,10 +1734,10 @@ export default function TournamentDetailClient({
                                 </button>
                               </div>
                             )}
-                            {teamNameEdit?.registrationId === registration.id && teamNameEditError && (
+                            {teamNameEdit?.key === registrationTeamNameEditKey(registration) && teamNameEditError && (
                               <p className="mt-1 text-xs font-semibold text-atk">{teamNameEditError}</p>
                             )}
-                            {teamNameEditSuccessId === registration.id && (
+                            {teamNameEditSuccessId === registrationTeamNameEditKey(registration) && (
                               <p className="mt-1 text-xs font-semibold text-accent">
                                 {t.registrationTeamNameUpdated}
                               </p>
