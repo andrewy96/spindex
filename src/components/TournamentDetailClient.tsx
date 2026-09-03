@@ -175,6 +175,14 @@ export default function TournamentDetailClient({
   const [hostRegisterBusy, setHostRegisterBusy] = useState(false);
   const [hostRegisterError, setHostRegisterError] = useState<string | null>(null);
   const [hostRegisterSuccess, setHostRegisterSuccess] = useState<string | null>(null);
+  const [teamNameEdit, setTeamNameEdit] = useState<{
+    registrationId: string;
+    userId: string;
+    value: string;
+  } | null>(null);
+  const [teamNameEditBusy, setTeamNameEditBusy] = useState(false);
+  const [teamNameEditError, setTeamNameEditError] = useState<string | null>(null);
+  const [teamNameEditSuccessId, setTeamNameEditSuccessId] = useState<string | null>(null);
   const [walkinName, setWalkinName] = useState("");
   const [rosterBusy, setRosterBusy] = useState(false);
   const [rosterError, setRosterError] = useState<string | null>(null);
@@ -749,6 +757,8 @@ export default function TournamentDetailClient({
     if (message === "team_name_required") {
       return t.registrationRequiredFieldError.replace("{field}", t.registrationTeamName);
     }
+    if (message === "invalid_team_name") return t.registrationTeamNameInvalid;
+    if (message === "team_name_disabled") return t.registrationTeamNameDisabled;
     if (message === "blader_name_required") {
       return t.registrationRequiredFieldError.replace("{field}", t.registrationBladerName);
     }
@@ -760,9 +770,63 @@ export default function TournamentDetailClient({
     }
     if (message === "player_required") return t.registrationPlayerRequired;
     if (message === "profile_not_found") return t.registrationPlayerNotFound;
+    if (message === "registration_not_found") return t.registrationNotFound;
     if (message === "invalid_profile") return t.registrationPlayerInvalid;
     if (message === "registration_closed" || message === "tournament_not_open") return t.registrationClosed;
     return message ? message.replace(/_/g, " ") : t.hostError;
+  };
+
+  const startTeamNameEdit = (registration: TournamentRegistration) => {
+    setTeamNameEdit({
+      registrationId: registration.id,
+      userId: registration.user_id,
+      value: registration.team_name ?? "",
+    });
+    setTeamNameEditError(null);
+    setTeamNameEditSuccessId(null);
+  };
+
+  const cancelTeamNameEdit = () => {
+    setTeamNameEdit(null);
+    setTeamNameEditError(null);
+  };
+
+  const saveTeamNameEdit = async (
+    event: React.FormEvent,
+    registration: TournamentRegistration,
+  ) => {
+    event.preventDefault();
+    if (!supabase || !item || !isHost || teamNameEditBusy) return;
+    if (!teamNameEdit || teamNameEdit.registrationId !== registration.id) return;
+
+    const cleanTeamName = teamNameEdit.value.trim();
+    if (detailRegistrationConfig.teamNameRequired && !cleanTeamName) {
+      setTeamNameEditError(t.registrationRequiredFieldError.replace("{field}", t.registrationTeamName));
+      return;
+    }
+
+    setTeamNameEditBusy(true);
+    setTeamNameEditError(null);
+    setTeamNameEditSuccessId(null);
+    const { error: updateError } = await supabase.rpc("host_update_tournament_registration_team_name", {
+      tid: item.id,
+      p_user_id: registration.user_id,
+      p_team_name: cleanTeamName,
+    });
+
+    if (updateError) {
+      setTeamNameEditBusy(false);
+      setTeamNameEditError(registrationRpcError(updateError.message));
+      return;
+    }
+
+    setTeamNameEdit(null);
+    setTeamNameEditSuccessId(registration.id);
+    await load();
+    setTeamNameEditBusy(false);
+    window.setTimeout(() => {
+      setTeamNameEditSuccessId((current) => (current === registration.id ? null : current));
+    }, 1800);
   };
 
   const submitHostRegistration = async (event: React.FormEvent) => {
@@ -1449,9 +1513,73 @@ export default function TournamentDetailClient({
                         <div className="mt-1 text-xs text-ink-dim">
                           {registration.email} / {registration.contact_number}
                         </div>
-                        {registration.team_name && (
-                          <div className="mt-1 text-xs font-semibold text-accent">
-                            {t.registrationTeamName}: {registration.team_name}
+                        {detailRegistrationConfig.teamNameEnabled && (
+                          <div className="mt-2">
+                            {teamNameEdit?.registrationId === registration.id ? (
+                              <form
+                                onSubmit={(event) => saveTeamNameEdit(event, registration)}
+                                className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
+                              >
+                                <div>
+                                  <label className="mb-1 block text-xs font-semibold text-accent">
+                                    {t.registrationTeamName}
+                                  </label>
+                                  <input
+                                    value={teamNameEdit.value}
+                                    onChange={(event) =>
+                                      setTeamNameEdit((current) =>
+                                        current?.registrationId === registration.id
+                                          ? { ...current, value: event.target.value }
+                                          : current,
+                                      )
+                                    }
+                                    className={inputCls}
+                                    required={detailRegistrationConfig.teamNameRequired}
+                                    maxLength={100}
+                                    autoFocus
+                                  />
+                                </div>
+                                <div className="flex items-end gap-2">
+                                  <button
+                                    type="submit"
+                                    disabled={teamNameEditBusy}
+                                    className="clip-x bg-accent px-3 py-2 font-display text-[10px] font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+                                  >
+                                    {t.save}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={cancelTeamNameEdit}
+                                    disabled={teamNameEditBusy}
+                                    className="clip-x border border-edge bg-panel-2 px-3 py-2 font-display text-[10px] font-bold tracking-wider text-ink-dim transition hover:text-ink disabled:opacity-50"
+                                  >
+                                    {t.cancel}
+                                  </button>
+                                </div>
+                              </form>
+                            ) : (
+                              <div className="flex flex-wrap items-center gap-2 text-xs">
+                                <span className="font-semibold text-accent">
+                                  {t.registrationTeamName}: {registration.team_name || "-"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => startTeamNameEdit(registration)}
+                                  disabled={teamNameEditBusy}
+                                  className="text-[10px] font-semibold text-ink-dim underline decoration-dotted transition hover:text-accent disabled:opacity-50"
+                                >
+                                  {t.registrationTeamNameEdit}
+                                </button>
+                              </div>
+                            )}
+                            {teamNameEdit?.registrationId === registration.id && teamNameEditError && (
+                              <p className="mt-1 text-xs font-semibold text-atk">{teamNameEditError}</p>
+                            )}
+                            {teamNameEditSuccessId === registration.id && (
+                              <p className="mt-1 text-xs font-semibold text-accent">
+                                {t.registrationTeamNameUpdated}
+                              </p>
+                            )}
                           </div>
                         )}
                       </div>
