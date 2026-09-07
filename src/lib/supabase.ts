@@ -243,6 +243,8 @@ export interface BeyliveJudge {
 }
 
 export interface BeyliveMatchPlayer {
+  /** Tournament-scoped display name resolved from the lineup. */
+  entrant_name?: string;
   match_id: string;
   user_id: string;
   team_id: string | null;

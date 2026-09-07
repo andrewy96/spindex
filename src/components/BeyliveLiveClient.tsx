@@ -1,5 +1,8 @@
 "use client";
 
+import { tournamentEntrantDisplayName } from "@/lib/tournamentEvent";
+import { beyliveMatchesWithEntrantNames } from "@/lib/beylive";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Locale } from "@/i18n";
@@ -310,7 +313,7 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
           .order("match_no", { ascending: true })
       : { data: [] };
     setTournament(nextTournament);
-    setMatches((mData as unknown as BeyliveMatch[]) ?? []);
+    setMatches(beyliveMatchesWithEntrantNames(nextTournament, (mData as unknown as BeyliveMatch[]) ?? []));
     setLoading(false);
   }, [id]);
 
@@ -561,7 +564,7 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
         </div>
         {(tournament.winner_team || tournament.winner_profile) && (
           <div className="mt-4 rounded-md border border-accent/40 bg-accent/10 px-4 py-3 font-display text-sm font-bold tracking-wider text-accent">
-            Champion: {tournament.winner_team ? `${beyliveTeamCode(tournament.winner_team)} ${beyliveTeamName(tournament.winner_team)}` : profileDisplayName(tournament.winner_profile)}
+            Champion: {tournament.winner_team ? `${beyliveTeamCode(tournament.winner_team)} ${beyliveTeamName(tournament.winner_team)}` : dbStandings.find((row) => row.user_id === tournament.winner_id)?.name || profileDisplayName(tournament.winner_profile)}
           </div>
         )}
         {localPartnerReady && localChampion && !tournament.winner_team && !tournament.winner_profile && (
@@ -793,7 +796,7 @@ export default function BeyliveLiveClient({ id, locale }: { id: string; locale: 
                   .sort((a, b) => (a.seed ?? 999999) - (b.seed ?? 999999))
                   .map((player, index) => (
                     <li key={player.user_id} className="flex justify-between gap-2 rounded bg-panel px-2 py-1">
-                      <span>{beyliveEventId(player, index)} {profileDisplayName(player.profile)}</span>
+                      <span>{beyliveEventId(player, index)} {tournamentEntrantDisplayName(player, isBeyliveTeamTournament(tournament))}</span>
                       <span className="font-mono text-accent-2">{beylivePlayerCode(player.profile)}</span>
                     </li>
                   ))}

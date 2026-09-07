@@ -1,5 +1,8 @@
 "use client";
 
+import { TOURNAMENT_SELECT, type CommunityTournament } from "@/lib/supabase";
+import { beyliveMatchesWithEntrantNames } from "@/lib/beylive";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Locale } from "@/i18n";
@@ -214,7 +217,7 @@ export default function BeyliveMatchClient({
     if (!supabase) return;
     const { data: tournamentData } = await supabase
       .from("tournaments")
-      .select("id,slug,host,format")
+      .select(TOURNAMENT_SELECT)
       .eq(tournamentLookupColumn(tournamentId), tournamentId)
       .maybeSingle();
     const resolvedTournamentId = String(tournamentData?.id ?? "");
@@ -253,7 +256,7 @@ export default function BeyliveMatchClient({
         : null,
     );
     setJudgeRole((judgeData as { role?: string } | null)?.role ?? null);
-    setMatch(data ? ({ ...(data as unknown as BeyliveMatch), tournament_format: format } as FormatAwareBeyliveMatch) : null);
+    setMatch(data ? ({ ...beyliveMatchesWithEntrantNames(tournamentData as unknown as CommunityTournament, [data as unknown as BeyliveMatch])[0], tournament_format: format } as FormatAwareBeyliveMatch) : null);
     setLocalPartnerState((partnerData?.state as LocalPartnerState | undefined) ?? null);
     setLoading(false);
   }, [matchId, profile?.id, tournamentId]);

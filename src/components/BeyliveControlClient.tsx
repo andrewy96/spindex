@@ -1,5 +1,8 @@
 "use client";
 
+import { tournamentEntrantDisplayName } from "@/lib/tournamentEvent";
+import { beyliveMatchesWithEntrantNames } from "@/lib/beylive";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -135,7 +138,9 @@ function PlayerRow({
   player,
   index,
   active,
+  useTeamName,
 }: {
+  useTeamName: boolean;
   player: TournamentPlayer;
   index: number;
   active: boolean;
@@ -147,7 +152,7 @@ function PlayerRow({
           <div className="mb-1 inline-flex rounded border border-accent/40 bg-accent/10 px-2 py-0.5 font-display text-[11px] font-black text-accent">
             {beyliveEventId(player, index)}
           </div>
-          <div className="truncate text-sm font-bold text-ink">{profileDisplayName(player.profile)}</div>
+          <div className="truncate text-sm font-bold text-ink">{tournamentEntrantDisplayName(player, useTeamName)}</div>
           <div className="font-mono text-[11px] font-semibold text-accent-2">{beylivePlayerCode(player.profile)}</div>
         </div>
         <QrCodeBadge value={beyliveQrValue(player.profile)} label="SCAN" size={58} />
@@ -670,7 +675,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
         ])
       : [{ data: [] }, { data: [] }];
     setTournament(nextTournament);
-    setMatches((mData as unknown as BeyliveMatch[]) ?? []);
+    setMatches(beyliveMatchesWithEntrantNames(nextTournament, (mData as unknown as BeyliveMatch[]) ?? []));
     setJudges((jData as unknown as BeyliveJudge[]) ?? []);
     setLoading(false);
   }, [id]);
@@ -1052,7 +1057,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
       kind: "player",
       id: player.user_id,
       code: beylivePlayerCode(player.profile),
-      name: profileDisplayName(player.profile),
+      name: tournamentEntrantDisplayName(player, isBeyliveTeamTournament(tournament)),
     };
   };
 
@@ -1963,7 +1968,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                   <div className="font-display text-lg font-black text-accent">
                     {beyliveEventId(scannedPlayer, players.indexOf(scannedPlayer))}
                   </div>
-                  <div className="font-semibold">{profileDisplayName(scannedPlayer.profile)}</div>
+                  <div className="font-semibold">{tournamentEntrantDisplayName(scannedPlayer, isBeyliveTeamTournament(tournament))}</div>
                   <div className="font-mono text-xs text-ink-dim">{beylivePlayerCode(scannedPlayer.profile)}</div>
                 </div>
               ) : (
@@ -2019,7 +2024,7 @@ export default function BeyliveControlClient({ id, locale }: { id: string; local
                     ))
                 ) : (
                   players.map((player, index) => (
-                      <PlayerRow
+                      <PlayerRow useTeamName={isBeyliveTeamTournament(tournament)}
                         key={player.user_id}
                         player={player}
                         index={index}

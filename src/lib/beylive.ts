@@ -9,7 +9,7 @@ import {
 } from "./supabase";
 import { profileDisplayName } from "./profileName";
 import { normalizeTournamentFormatConfig } from "./tournamentFormat";
-import { inferTournamentEventType } from "./tournamentEvent";
+import { tournamentEntrantDisplayName, inferTournamentEventType } from "./tournamentEvent";
 
 /** The four scorable finish types, shared by every inline/standalone BEYLIVE scorer. */
 export const BEYLIVE_FINISHES: { key: Finish; label: string; color: string }[] = [
@@ -197,8 +197,23 @@ export function beyliveParticipantCode(player: BeyliveMatchPlayer) {
   return player.team ? beyliveTeamCode(player.team) : beylivePlayerCode(player.profile);
 }
 
+/** Resolve tournament entry names without changing the account profile or match identity. */
+export function beyliveMatchesWithEntrantNames(
+  tournament: CommunityTournament | null,
+  matches: BeyliveMatch[],
+): BeyliveMatch[] {
+  const names = new Map((tournament?.players ?? []).map((player) => [
+    player.user_id,
+    tournamentEntrantDisplayName(player, isBeyliveTeamTournament(tournament)),
+  ]));
+  return matches.map((match) => ({
+    ...match,
+    players: match.players?.map((player) => ({ ...player, entrant_name: names.get(player.user_id) })),
+  }));
+}
+
 export function beyliveParticipantName(player: BeyliveMatchPlayer) {
-  return player.team ? beyliveTeamName(player.team) : profileDisplayName(player.profile);
+  return player.team ? beyliveTeamName(player.team) : player.entrant_name || profileDisplayName(player.profile);
 }
 
 export function beyliveParticipantQrValue(player: BeyliveMatchPlayer) {
@@ -296,7 +311,7 @@ export function beyliveStandings(
       is_team: false,
       event_id: beyliveEventId(player, index),
       player_code: beylivePlayerCode(player.profile),
-      name: profileDisplayName(player.profile),
+      name: tournamentEntrantDisplayName(player, isBeyliveTeamTournament(tournament)),
       wins: 0,
       losses: 0,
       points: 0,
@@ -423,7 +438,7 @@ export function beyliveGroupPools(
           is_team: false,
           event_id: beyliveEventId(player, index),
           player_code: beylivePlayerCode(player.profile),
-          name: profileDisplayName(player.profile),
+          name: tournamentEntrantDisplayName(player, isBeyliveTeamTournament(tournament)),
           wins: 0,
           losses: 0,
           points: 0,
@@ -515,8 +530,8 @@ export function beylivePodium(
   if (!winner || !runnerUp) return null;
 
   const entries: BeylivePodiumEntry[] = [
-    { place: "1st", name: profileDisplayName(winner.profile), playerCode: beylivePlayerCode(winner.profile), profile: winner.profile },
-    { place: "2nd", name: profileDisplayName(runnerUp.profile), playerCode: beylivePlayerCode(runnerUp.profile), profile: runnerUp.profile },
+    { place: "1st", name: beyliveParticipantName(winner), playerCode: beylivePlayerCode(winner.profile), profile: winner.profile },
+    { place: "2nd", name: beyliveParticipantName(runnerUp), playerCode: beylivePlayerCode(runnerUp.profile), profile: runnerUp.profile },
   ];
 
   const thirdPlaceMatch = matches.find(
@@ -531,8 +546,8 @@ export function beylivePodium(
     const third = thirdPlaceMatch.players?.find((p) => p.user_id === thirdPlaceMatch.winner_id);
     const fourth = thirdPlaceMatch.players?.find((p) => p.user_id !== thirdPlaceMatch.winner_id);
     if (third && fourth) {
-      entries.push({ place: "3rd", name: profileDisplayName(third.profile), playerCode: beylivePlayerCode(third.profile), profile: third.profile });
-      entries.push({ place: "4th", name: profileDisplayName(fourth.profile), playerCode: beylivePlayerCode(fourth.profile), profile: fourth.profile });
+      entries.push({ place: "3rd", name: beyliveParticipantName(third), playerCode: beylivePlayerCode(third.profile), profile: third.profile });
+      entries.push({ place: "4th", name: beyliveParticipantName(fourth), playerCode: beylivePlayerCode(fourth.profile), profile: fourth.profile });
       return entries;
     }
   }
@@ -544,7 +559,7 @@ export function beylivePodium(
       .filter((p): p is BeyliveMatchPlayer => !!p);
     if (losers.length === 2) {
       for (const p of losers) {
-        entries.push({ place: "3rd-4th", name: profileDisplayName(p.profile), playerCode: beylivePlayerCode(p.profile), profile: p.profile });
+        entries.push({ place: "3rd-4th", name: beyliveParticipantName(p), playerCode: beylivePlayerCode(p.profile), profile: p.profile });
       }
     }
   }

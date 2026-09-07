@@ -383,7 +383,6 @@ export default function TournamentDetailClient({
   const entrantName = (player: (typeof players)[number]) =>
     tournamentEntrantDisplayName(player, detailUsesTeamEntrants);
   const poolEntrantLabel = detailEntrantLabel ? "teams" : "players";
-  const poolPlacedLabel = detailEntrantLabel ? "any team" : "anyone";
   const editEventType: TournamentEventType = format === "partner" ? "team" : eventType;
   const editEntrantLabel =
     tournamentUsesTeamEntrants(editEventType, format)
@@ -575,6 +574,20 @@ export default function TournamentDetailClient({
     setRosterBusy(false);
     if (err) setRosterError(err.message.replace(/_/g, " "));
     else load();
+  };
+
+  const undoPoolDraw = async () => {
+    if (!supabase || !isHost || !item || rosterBusy) return;
+    setRosterBusy(true);
+    setRosterError(null);
+    setCsvImportMessage(null);
+    try {
+      const { error: err } = await supabase.rpc("undo_group_stage_pool_draw", { tid: item.id });
+      if (err) setRosterError(err.message.replace(/_/g, " "));
+      else await load();
+    } finally {
+      setRosterBusy(false);
+    }
   };
 
   const setPlayerPool = async (userId: string, poolNo: number | null) => {
@@ -1787,18 +1800,29 @@ export default function TournamentDetailClient({
               <div>
                 <div className="font-display text-sm font-bold tracking-wider text-ink-dim">Pools</div>
                 <p className="mt-1 text-xs text-ink-dim">
-                  Splits joined {poolEntrantLabel} into {poolStageGroupCount} pools and advances {poolStageAdvanceCount} {poolEntrantLabel} to the top cut. Safe to
-                  re-draw after adding more {poolEntrantLabel} — {poolPlacedLabel} already placed (including hand-moved {poolEntrantLabel}) stays put.
+                  Splits joined {poolEntrantLabel} into {poolStageGroupCount} pools and advances {poolStageAdvanceCount} {poolEntrantLabel} to the top cut.
+                  Draw pools keeps existing placements and adds unplaced {poolEntrantLabel}. Use Undo draw to clear all placements and draw again before matches are generated.
                 </p>
               </div>
               {isHost && (
-                <button
-                  onClick={drawPools}
-                  disabled={rosterBusy || joined.length < poolStageMinPlayers}
-                  className="clip-x shrink-0 bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
-                >
-                  Draw pools
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  {joined.some((p) => p.pool_no != null) && (
+                    <button
+                      onClick={undoPoolDraw}
+                      disabled={rosterBusy || item.status !== "open"}
+                      className="clip-x border border-edge px-4 py-2 font-display text-xs font-bold text-ink-dim transition enabled:hover:text-ink disabled:opacity-50"
+                    >
+                      Undo draw
+                    </button>
+                  )}
+                  <button
+                    onClick={drawPools}
+                    disabled={rosterBusy || item.status !== "open" || joined.length < poolStageMinPlayers}
+                    className="clip-x shrink-0 bg-accent px-4 py-2 font-display text-xs font-bold tracking-wider text-bg transition enabled:hover:brightness-110 disabled:opacity-50"
+                  >
+                    Draw pools
+                  </button>
+                </div>
               )}
             </div>
             {joined.some((p) => p.pool_no != null) ? (
