@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "test:swiss": "node scripts/test-swiss-tournament.mjs",
     "start": "next start",
     "fetch-data": "node scripts/fetch-data.mjs",
     "cap:sync": "cap sync",
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.4.2",
+    "@electric-sql/pglite": "^0.5.8",
     "@tailwindcss/postcss": "^4.1.0",
     "@types/node": "^22",
     "@types/qrcode": "^1.5.6",

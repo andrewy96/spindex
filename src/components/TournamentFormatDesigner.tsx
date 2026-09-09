@@ -4,6 +4,7 @@ import { Dict } from "@/i18n";
 import { TournamentFormat } from "@/lib/supabase";
 import {
   defaultTournamentFormatConfig,
+  fourPlayerSwissTournamentConfig,
   normalizeTournamentFormatConfig,
   TournamentAdvanceRule,
   TournamentFormatConfig,
@@ -65,6 +66,9 @@ function stageSummary(stage: TournamentFormatStage, labels: Dict["tournaments"],
   if (stage.groups) parts.push(`${stage.groups} ${labels.formatGroups}`);
   if (stage.rounds) parts.push(`${stage.rounds} ${labels.formatRounds}`);
   parts.push(`${labels.formatTargetScore} ${stage.targetScore}`);
+  if (stage.type === "knockout" && stage.semifinalFinalTargetScore != null) {
+    parts.push(`${labels.formatSemifinalFinalScore} ${stage.semifinalFinalTargetScore}`);
+  }
   if (stage.thirdPlace) parts.push(labels.formatThirdPlace);
   if (stage.consolation) parts.push(labels.formatConsolation);
   return parts.join(" · ");
@@ -197,6 +201,18 @@ export default function TournamentFormatDesigner({
 
       {config.enabled && (
         <div className="mt-4 grid gap-3">
+          {format === "swiss" && maxPlayers >= 4 && (
+            <div className="rounded-md border border-accent/30 bg-accent/5 p-3">
+              <button
+                type="button"
+                onClick={() => onChange(fourPlayerSwissTournamentConfig(maxPlayers))}
+                className="text-sm font-semibold text-accent hover:underline"
+              >
+                {labels.formatFourPlayerSwissPreset}
+              </button>
+              <p className="mt-1 text-xs leading-relaxed text-ink-dim">{labels.formatFourPlayerSwissHelp}</p>
+            </div>
+          )}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="font-display text-xs font-bold uppercase tracking-wider text-accent-2">
               {labels.formatDesignerTitle}
@@ -314,8 +330,8 @@ export default function TournamentFormatDesigner({
                     </span>
                     <input
                       type="number"
-                      min={2}
-                      max={8}
+                      min={stage.type === "swiss" ? 1 : 2}
+                      max={stage.type === "swiss" ? Math.max(1, Math.floor(maxPlayers / 2)) : 8}
                       value={stage.groups ?? ""}
                       onChange={(event) => updateStage(stage.id, { groups: event.target.value ? Number(event.target.value) : undefined })}
                       className={rowInputCls}
@@ -363,6 +379,24 @@ export default function TournamentFormatDesigner({
                       ))}
                     </select>
                   </label>
+                  {format === "swiss" && stage.type === "knockout" && (
+                    <label className="grid gap-1 sm:col-span-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-dim">
+                        {labels.formatSemifinalFinalScore}
+                      </span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={30}
+                        placeholder={String(stage.targetScore)}
+                        value={stage.semifinalFinalTargetScore ?? ""}
+                        onChange={(event) => updateStage(stage.id, {
+                          semifinalFinalTargetScore: event.target.value ? Number(event.target.value) : undefined,
+                        })}
+                        className={rowInputCls}
+                      />
+                    </label>
+                  )}
                   <label className="grid gap-1 sm:col-span-2">
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-dim">
                       {labels.formatAdvanceRule}

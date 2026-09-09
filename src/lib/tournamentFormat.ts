@@ -29,6 +29,7 @@ export interface TournamentFormatStage {
   rounds?: number;
   advanceCount: number;
   targetScore: number;
+  semifinalFinalTargetScore?: number;
   seeding: TournamentSeedingMode;
   advanceRule: TournamentAdvanceRule;
   thirdPlace: boolean;
@@ -203,6 +204,26 @@ export function defaultTournamentFormatConfig(
   };
 }
 
+export function fourPlayerSwissTournamentConfig(maxPlayers: number): TournamentFormatConfig {
+  const entrants = clampInt(maxPlayers, 80, 4, 256);
+  const groups = Math.ceil(entrants / 4);
+  const qualifiers = groups * 2;
+  return {
+    version: 1,
+    enabled: true,
+    template: "swiss",
+    stages: [
+      stage("swiss", "Swiss groups", "swiss", entrants, qualifiers, 4, {
+        groups, rounds: 3, advanceRule: "top_n",
+      }),
+      {
+        ...stage("knockout", "Top cut", "knockout", qualifiers, 1, 4),
+        semifinalFinalTargetScore: 7,
+      },
+    ],
+  };
+}
+
 function normalizeStage(value: unknown, index: number, maxPlayers: number, targetScore: number): TournamentFormatStage {
   const source = isRecord(value) ? value : {};
   const fallback = stage(
@@ -219,10 +240,15 @@ function normalizeStage(value: unknown, index: number, maxPlayers: number, targe
     name: typeof source.name === "string" && source.name.trim() ? source.name.trim().slice(0, 48) : fallback.name,
     type: asStageType(source.type, fallback.type),
     entrants: clampInt(source.entrants, fallback.entrants, 2, 256),
-    groups: source.groups == null ? undefined : clampInt(source.groups, 2, 2, 8),
+    groups: source.groups == null ? undefined : clampInt(
+      source.groups, 2, source.type === "swiss" ? 1 : 2, source.type === "swiss" ? 128 : 8,
+    ),
     rounds: source.rounds == null ? undefined : clampInt(source.rounds, 1, 1, 16),
     advanceCount: clampInt(source.advanceCount, fallback.advanceCount, 1, 256),
     targetScore: clampInt(source.targetScore, fallback.targetScore, 1, 30),
+    semifinalFinalTargetScore: source.semifinalFinalTargetScore == null
+      ? undefined
+      : clampInt(source.semifinalFinalTargetScore, 7, 1, 30),
     seeding: asSeeding(source.seeding, fallback.seeding),
     advanceRule: asAdvanceRule(source.advanceRule, fallback.advanceRule),
     thirdPlace: Boolean(source.thirdPlace),
@@ -305,11 +331,11 @@ export function tournamentSwissStageSettings(
   const defaultTopCut = players >= 32 ? 16 : players >= 16 ? 8 : players >= 8 ? 4 : 2;
   const config = normalizeTournamentFormatConfig(value, format, players, targetScore);
   const swissStage = config.stages.find((stage) => stage.type === "swiss") ?? config.stages[0];
-  const maxGroups = Math.min(8, Math.max(1, Math.floor(players / 2)));
+  const maxGroups = Math.min(128, Math.max(1, Math.floor(players / 2)));
   const groups =
     swissStage?.groups == null
       ? defaultGroups
-      : Math.min(maxGroups, clampInt(swissStage.groups, defaultGroups, 1, 8));
+      : Math.min(maxGroups, clampInt(swissStage.groups, defaultGroups, 1, 128));
   const advanceCount = Math.min(
     players,
     Math.max(
@@ -337,6 +363,9 @@ export function tournamentFormatStageSummary(stage: TournamentFormatStage) {
   if (stage.groups) parts.push(`${stage.groups} groups`);
   if (stage.rounds) parts.push(`${stage.rounds} rounds`);
   parts.push(`first to ${stage.targetScore}`);
+  if (stage.type === "knockout" && stage.semifinalFinalTargetScore != null) {
+    parts.push(`semifinal/final first to ${stage.semifinalFinalTargetScore}`);
+  }
   if (stage.thirdPlace) parts.push("3rd place");
   if (stage.consolation) parts.push("consolation");
   return parts.join(" · ");
