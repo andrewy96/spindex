@@ -4,7 +4,6 @@ import { Dict } from "@/i18n";
 import { TournamentFormat } from "@/lib/supabase";
 import {
   defaultTournamentFormatConfig,
-  fourPlayerSwissTournamentConfig,
   normalizeTournamentFormatConfig,
   TournamentAdvanceRule,
   TournamentFormatConfig,
@@ -201,19 +200,6 @@ export default function TournamentFormatDesigner({
 
       {config.enabled && (
         <div className="mt-4 grid gap-3">
-          {format === "swiss" && maxPlayers >= 4 && (
-            <div className="rounded-md border border-accent/30 bg-accent/5 p-3">
-              <button
-                type="button"
-                onClick={() => onChange(fourPlayerSwissTournamentConfig(maxPlayers))}
-                className="text-sm font-semibold text-accent hover:underline"
-              >
-                {labels.formatFourPlayerSwissPreset}
-              </button>
-              <p className="mt-1 text-xs leading-relaxed text-ink-dim">{labels.formatFourPlayerSwissHelp}</p>
-              <p className="mt-1 text-xs leading-relaxed text-ink-dim">{labels.formatSwissQualifierSeeding}</p>
-            </div>
-          )}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="font-display text-xs font-bold uppercase tracking-wider text-accent-2">
               {labels.formatDesignerTitle}
