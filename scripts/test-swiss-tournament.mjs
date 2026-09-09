@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
-import { buildBeyliveBracket, beyliveKnockoutRoundLabels } from "../src/lib/beyliveBracket.ts";
+import { buildBeyliveBracket, beyliveKnockoutRoundLabels, layoutBeyliveBracket } from "../src/lib/beyliveBracket.ts";
 import {
   fourPlayerSwissTournamentConfig,
   normalizeTournamentFormatConfig,
@@ -163,6 +163,20 @@ const initialMatches = await bracketMatches(event);
 const initialBracket = buildBeyliveBracket(initialMatches);
 assert.deepEqual(initialBracket.map(r=>r.label), ["Preliminary","Round of 32","Round of 16","Quarterfinal","Semifinal","Final"]);
 assert.deepEqual(initialBracket.map(r=>r.nodes.length), [32,16,8,4,2,1]);
+const layout = layoutBeyliveBracket(initialBracket);
+assert.equal(layout.cards.length,63);
+assert.equal(layout.connections.length,62);
+assert.equal(layout.connections.filter(e=>e.advanced).length,24);
+for(const edge of layout.connections) {
+  const source=layout.cards.find(c=>c.node.id===edge.sourceId);
+  const target=layout.cards.find(c=>c.node.id===edge.targetId);
+  assert.equal(source.node.next.id,target.node.id);
+  assert.ok(target.x>source.x);
+}
+for(const round of initialBracket) {
+  const cards=layout.cards.filter(c=>c.node.roundNo===round.roundNo);
+  for(let i=1;i<cards.length;i++) assert.ok(cards[i].y>=cards[i-1].y+cards[i-1].height+24);
+}
 assert.equal(initialBracket[0].nodes.filter(n=>n.bye).length,24);
 assert.equal(initialBracket[0].nodes.filter(n=>!n.bye).length,8);
 assert.equal(initialBracket[1].nodes.flatMap(n=>n.slots).filter(s=>s.player).length,24);

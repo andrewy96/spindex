@@ -1,17 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { useId, useState } from "react";
 import type { Locale } from "@/i18n";
 import type { BeyliveMatch } from "@/lib/supabase";
 import { tournamentPath } from "@/lib/tournamentRouting";
-import { buildBeyliveBracket, type BracketNode } from "@/lib/beyliveBracket";
+import { buildBeyliveBracket, layoutBeyliveBracket, type BracketNode } from "@/lib/beyliveBracket";
 import {
   beyliveParticipantCode, beyliveParticipantName, beyliveParticipantWon,
   beyliveStatusLabel, isBeyliveByeMatch,
 } from "@/lib/beylive";
 
-function MatchCard({ node, locale, tournamentId, currentRound }: {
-  node: BracketNode; locale: Locale; tournamentId: string; currentRound?: number;
+function MatchCard({ node, locale, tournamentId, currentRound, graph = false }: {
+  node: BracketNode; locale: Locale; tournamentId: string; currentRound?: number; graph?: boolean;
 }) {
   const match = node.actual;
   const tone = match?.status === "live" ? "border-accent bg-accent/10"
@@ -19,7 +20,7 @@ function MatchCard({ node, locale, tournamentId, currentRound }: {
     : match && currentRound === node.roundNo ? "border-accent-2/45 bg-accent-2/5"
     : "border-edge bg-panel";
   return (
-    <article id={node.id} className={`scroll-mt-20 rounded-md border p-3 ${tone}`}>
+    <article id={node.id} className={`scroll-mt-20 overflow-hidden rounded-md border p-3 ${graph ? "h-[196px]" : ""} ${tone}`}>
       <div className="mb-2 flex items-start justify-between gap-2">
         {match ? (
           <Link href={tournamentPath(locale, null, `/matches/${match.id}`, tournamentId)}
@@ -41,10 +42,10 @@ function MatchCard({ node, locale, tournamentId, currentRound }: {
               won ? "bg-accent/15 text-accent" : player ? "bg-bg text-ink" : "border border-dashed border-edge text-ink-dim"
             }`}>
               <div className="min-w-0">
-                <div className="break-words text-xs font-semibold">
+                <div className="truncate text-xs font-semibold">
                   {player ? beyliveParticipantName(player) : slot?.source || "Awaiting opponent"}
                 </div>
-                <div className="mt-0.5 text-[10px] text-ink-dim">
+                <div className="mt-0.5 truncate text-[10px] text-ink-dim">
                   {player ? [beyliveParticipantCode(player), slot?.source].filter(Boolean).join(" · ") : "To be decided"}
                 </div>
               </div>
@@ -68,12 +69,14 @@ export default function BeyliveBracketView({
   matches: BeyliveMatch[]; locale: Locale; tournamentId: string; currentRound?: number;
   className?: string; framed?: boolean; showHeader?: boolean;
 }) {
+  const [zoom, setZoom] = useState(1);
+  const markerId = useId().replace(/:/g, "");
   const rounds = buildBeyliveBracket(matches);
   if (!rounds.length) return null;
   const preliminary = rounds[0].label === "Preliminary" ? rounds[0] : undefined;
   const byes = preliminary?.nodes.filter((n) => n.bye) ?? [];
   const playIns = preliminary?.nodes.filter((n) => !n.bye) ?? [];
-  const bracketRounds = preliminary ? rounds.slice(1) : rounds;
+  const layout = layoutBeyliveBracket(rounds);
   const actualMatches = matches.filter((m) => m.bracket === "main" && !isBeyliveByeMatch(m));
   const completed = actualMatches.filter((m) => m.status === "completed").length;
   const final = rounds[rounds.length - 1].nodes[0]?.actual;
@@ -102,39 +105,41 @@ export default function BeyliveBracketView({
             <strong>Preliminary / Play-In:</strong> {playIns.length * 2} players play {playIns.length} matches.
             {" "}{byes.length} players have byes to {rounds[1]?.label}.
           </div>
-          <details open className="rounded-md border border-edge p-3">
-            <summary className="cursor-pointer font-display text-sm font-bold text-accent">
-              Byes to {rounds[1]?.label} — {byes.length} players
-            </summary>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {byes.map((bye) => {
-                const player = bye.slots[0]?.player;
-                return <a key={bye.id} href={`#${bye.next?.id}`} className="rounded border border-accent/25 bg-accent/5 p-2 hover:border-accent">
-                  <div className="text-sm font-semibold text-ink">{player ? beyliveParticipantName(player) : "Qualified player"}</div>
-                  <div className="text-[10px] text-ink-dim">{player ? beyliveParticipantCode(player) : ""}</div>
-                  <div className="mt-1 text-xs text-accent">BYE → {bye.next?.title}</div>
-                </a>;
-              })}
-            </div>
-          </details>
-          <div>
-            <h3 className="mb-3 font-display text-sm font-bold text-accent-2">Preliminary matches — {playIns.length}</h3>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {playIns.map((node) => <MatchCard key={node.id} node={node} {...cardProps} />)}
-            </div>
-          </div>
+
         </div>
       )}
 
-      <p className="mb-3 text-xs text-ink-dim">Follow each match’s advancement link. Upcoming cards show known qualifiers and the match winners still to be decided. Scroll horizontally to see later rounds.</p>
-      <div className="flex items-start gap-4 overflow-x-auto pb-4">
-        {bracketRounds.map((round) => (
-          <section key={round.roundNo} className="w-72 shrink-0 space-y-3">
-            <h3 className="font-display text-sm font-bold text-accent-2">{round.label} · {round.nodes.length} {round.nodes.length === 1 ? "match" : "matches"}</h3>
-            {round.nodes.map((node) => <MatchCard key={node.id} node={node} {...cardProps} />)}
-          </section>
-        ))}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-ink-dim">Follow the arrows from each player or match to the next round. Green = advanced / bye. Cyan = winner to be decided.</p>
+        <div className="flex items-center gap-2 text-xs">
+          <button type="button" aria-label="Zoom out bracket" onClick={() => setZoom(z => Math.max(0.25, +(z - 0.15).toFixed(2)))} className="rounded border border-edge px-3 py-2">&minus;</button>
+          <span className="min-w-10 text-center">{Math.round(zoom * 100)}%</span>
+          <button type="button" aria-label="Zoom in bracket" onClick={() => setZoom(z => Math.min(1.3, +(z + 0.15).toFixed(2)))} className="rounded border border-edge px-3 py-2">+</button>
+          <button type="button" onClick={() => setZoom(1)} className="rounded border border-edge px-3 py-2">Reset</button>
+        </div>
       </div>
+      <div role="region" aria-label="Tournament bracket with advancement arrows" tabIndex={0} className="max-h-[75vh] overflow-auto rounded-md border border-edge bg-bg/30 p-3">
+        <div style={{ width: layout.width * zoom, height: layout.height * zoom }}>
+          <div className="relative origin-top-left" style={{ width: layout.width, height: layout.height, transform: `scale(${zoom})` }}>
+            <svg className="pointer-events-none absolute inset-0" width={layout.width} height={layout.height} aria-hidden="true">
+              <defs>
+                <marker id={`${markerId}-pending`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#38d9ff" /></marker>
+                <marker id={`${markerId}-advanced`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#00e58f" /></marker>
+              </defs>
+              {layout.connections.map(edge => <path key={edge.sourceId} data-source={edge.sourceId} data-target={edge.targetId} d={edge.d} fill="none" stroke={edge.advanced ? "#00e58f" : "#38d9ff"} strokeWidth="2" markerEnd={`url(#${markerId}-${edge.advanced ? "advanced" : "pending"})`} />)}
+            </svg>
+            {rounds.map((round, index) => <h3 key={round.roundNo} className="absolute top-0 font-display text-sm font-bold text-accent-2" style={{ left: index * (layout.cardWidth + layout.columnGap), width: layout.cardWidth }}>{round.label === "Preliminary" ? "Preliminary / Byes" : round.label}</h3>)}
+            {layout.cards.map(({node,x,y,height}) => <div key={node.id} className="absolute" style={{left:x,top:y,width:layout.cardWidth,height}}>
+              {node.bye ? <article id={node.id} className="h-full overflow-hidden rounded-md border border-accent/50 bg-panel p-3">
+                <div className="text-[10px] font-bold uppercase text-accent">BYE &middot; Advanced</div>
+                <div className="mt-1 truncate text-sm font-semibold text-ink">{node.slots[0]?.player ? beyliveParticipantName(node.slots[0].player) : "Qualified player"}</div>
+                <a href={`#${node.next?.id}`} className="mt-1 block text-xs text-accent hover:underline">BYE &rarr; {node.next?.title}</a>
+              </article> : <MatchCard node={node} {...cardProps} graph />}
+            </div>)}
+          </div>
+        </div>
+      </div>
+      <p className="mt-2 text-xs text-ink-dim">Scroll across and down to follow the bracket. Use &minus; to see more rounds at once.</p>
 
       {thirdPlace.length > 0 && (
         <div className="mt-4 border-t border-edge pt-4">

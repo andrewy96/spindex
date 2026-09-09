@@ -104,3 +104,41 @@ export function buildBeyliveBracket(matches: BeyliveMatch[]): BracketRound[] {
   }
   return rounds;
 }
+
+export function layoutBeyliveBracket(rounds: BracketRound[]) {
+  const cardWidth = 280;
+  const columnGap = 88;
+  const rowGap = 24;
+  const headerHeight = 48;
+  const positions = new Map<string, { node: BracketNode; x: number; y: number; height: number; centerY: number }>();
+  rounds.forEach((round, column) => {
+    let bottom = headerHeight - rowGap;
+    round.nodes.forEach((node) => {
+      const height = node.bye ? 96 : 196;
+      const sources = column === 0 ? [] : rounds[column - 1].nodes
+        .filter(source => source.next?.id === node.id)
+        .map(source => positions.get(source.id)!.centerY);
+      const desired = sources.length ? sources.reduce((a,b)=>a+b,0) / sources.length - height / 2 : bottom + rowGap;
+      const y = Math.max(bottom + rowGap, desired);
+      positions.set(node.id, { node, x: column * (cardWidth + columnGap), y, height, centerY: y + height / 2 });
+      bottom = y + height;
+    });
+  });
+  const cards = [...positions.values()];
+  const connections = cards.flatMap(source => {
+    const target = source.node.next ? positions.get(source.node.next.id) : undefined;
+    if (!target) return [];
+    const startX = source.x + cardWidth;
+    const middleX = startX + columnGap / 2;
+    return [{
+      sourceId: source.node.id, targetId: target.node.id,
+      d: `M ${startX} ${source.centerY} H ${middleX} V ${target.centerY} H ${target.x - 5}`,
+      advanced: source.node.bye || source.node.actual?.status === "completed",
+    }];
+  });
+  return {
+    cardWidth, columnGap, cards, connections,
+    width: Math.max(cardWidth, rounds.length * (cardWidth + columnGap) - columnGap),
+    height: Math.max(headerHeight, ...cards.map(card=>card.y + card.height)) + rowGap,
+  };
+}
