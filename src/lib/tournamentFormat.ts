@@ -358,6 +358,30 @@ export function tournamentSwissStageSettings(
   };
 }
 
+export function tournamentPoolAdvancementInfo(
+  value: unknown,
+  format: TournamentTemplateFormat,
+  maxPlayers: number,
+  targetScore = 4,
+) {
+  const settings = format === "swiss"
+    ? tournamentSwissStageSettings(value, format, maxPlayers, targetScore)
+    : tournamentGroupStageSettings(value, format, maxPlayers, targetScore);
+  const { groups, advanceCount: totalAdvance } = settings;
+  // Only highlight places guaranteed in every pool. A remainder must not be
+  // rounded up into an extra qualifier in ALL pools.
+  const perPoolCut = Math.floor(totalAdvance / groups);
+  const remainder = totalAdvance % groups;
+  const rounds = "rounds" in settings && typeof settings.rounds === "number" ? settings.rounds : undefined;
+  let label = groups > 1
+    ? remainder === 0
+      ? `top ${perPoolCut} per pool / top ${totalAdvance} advance`
+      : `${perPoolCut} guaranteed per pool + ${remainder} additional qualifiers / top ${totalAdvance} advance`
+    : `top ${totalAdvance} advance`;
+  if (rounds != null) label += ` / after ${rounds} Swiss rounds`;
+  return { groups, totalAdvance, perPoolCut, rounds, label };
+}
+
 export function tournamentFormatStageSummary(stage: TournamentFormatStage) {
   const parts = [`${stage.entrants} players`, `top ${stage.advanceCount}`];
   if (stage.groups) parts.push(`${stage.groups} groups`);

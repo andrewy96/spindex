@@ -6,6 +6,7 @@ import {
   normalizeTournamentFormatConfig,
   tournamentFormatConfigForSave,
   tournamentSwissStageSettings,
+  tournamentPoolAdvancementInfo,
 } from "../src/lib/tournamentFormat.ts";
 
 const db = new PGlite();
@@ -25,6 +26,17 @@ assert.deepEqual(tournamentSwissStageSettings(config, "swiss", 80), {
   groups: 20, advanceCount: 40, rounds: 3, minPlayers: 40,
 });
 assert.equal(normalizeTournamentFormatConfig(config, "swiss", 80).stages[1].semifinalFinalTargetScore, 7);
+assert.deepEqual(tournamentPoolAdvancementInfo(config, "swiss", 80), {
+  groups: 20, totalAdvance: 40, perPoolCut: 2, rounds: 3,
+  label: "top 2 per pool / top 40 advance / after 3 Swiss rounds",
+});
+const twentyQualifierPlan = structuredClone(config);
+twentyQualifierPlan.stages[0].advanceCount = 20;
+assert.equal(tournamentPoolAdvancementInfo(twentyQualifierPlan, "swiss", 80).perPoolCut, 1);
+const unevenCut = structuredClone(config);
+unevenCut.stages[0].advanceCount = 41;
+assert.equal(tournamentPoolAdvancementInfo(unevenCut, "swiss", 80).perPoolCut, 2);
+assert.match(tournamentPoolAdvancementInfo(unevenCut, "swiss", 80).label, /1 additional qualifiers/);
 
 // Minimal storage/auth fixture; tournament execution functions are loaded directly
 // from the real migrations, including pairing, pool drawing, byes and placement.
