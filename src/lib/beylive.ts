@@ -450,30 +450,7 @@ export function beyliveGroupPools(
     });
 }
 
-/** Knockout round name from how many matches are in it: 8 -> "Round of 16", 1 -> "Final". */
-export function beyliveKnockoutRoundLabel(matchCountInRound: number) {
-  if (matchCountInRound <= 1) return "Final";
-  if (matchCountInRound === 2) return "Semifinal";
-  if (matchCountInRound === 4) return "Quarterfinal";
-  return `Round of ${matchCountInRound * 2}`;
-}
-
-export function beyliveKnockoutRoundLabels(matches: BeyliveMatch[]) {
-  const byRound = new Map<number, number>();
-  for (const match of matches) {
-    if (match.bracket !== "main") continue;
-    byRound.set(match.round_no, (byRound.get(match.round_no) ?? 0) + 1);
-  }
-  const labels = new Map<number, string>();
-
-  [...byRound.entries()]
-    .sort(([a], [b]) => a - b)
-    .forEach(([roundNo, matchCount]) => {
-      labels.set(roundNo, beyliveKnockoutRoundLabel(matchCount));
-    });
-
-  return labels;
-}
+export { beyliveKnockoutRoundLabel, beyliveKnockoutRoundLabels } from "./beyliveBracket";
 
 export interface BeylivePodiumEntry {
   place: "1st" | "2nd" | "3rd" | "4th" | "3rd-4th";

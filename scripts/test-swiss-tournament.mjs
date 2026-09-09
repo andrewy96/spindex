@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
+import { buildBeyliveBracket, beyliveKnockoutRoundLabels } from "../src/lib/beyliveBracket.ts";
 import {
   fourPlayerSwissTournamentConfig,
   normalizeTournamentFormatConfig,
@@ -119,6 +120,12 @@ async function finishRound(id) {
   await db.query("select advance_beylive_swiss_top_cut($1)", [id]);
 }
 
+async function bracketMatches(id) {
+  return (await db.query(`select m.*, coalesce((select json_agg(mp order by mp.slot_no)
+    from beylive_match_players mp where mp.match_id=m.id),'[]') as players
+    from beylive_matches m where m.tournament_id=$1 order by round_no,match_no`, [id])).rows;
+}
+
 const event = uid(1000);
 await createEvent(event, 80, config);
 await db.query("select set_tournament_player_pool($1,$2,20)", [event, uid(80)]);
@@ -152,12 +159,39 @@ assert.equal(await scalar(`with ranked as (
 ) select count(*)::int from ranked r join beylive_match_players mp on mp.user_id=r.user_id
 join beylive_matches m on m.id=mp.match_id where m.tournament_id=$1 and m.bracket='main' and m.round_no=4 and r.r>2`, [event]), 0);
 assert.equal(await scalar("select count(*)::int from beylive_matches where tournament_id=$1 and round_no=4 and status='completed'", [event]), 24);
+const initialMatches = await bracketMatches(event);
+const initialBracket = buildBeyliveBracket(initialMatches);
+assert.deepEqual(initialBracket.map(r=>r.label), ["Preliminary","Round of 32","Round of 16","Quarterfinal","Semifinal","Final"]);
+assert.deepEqual(initialBracket.map(r=>r.nodes.length), [32,16,8,4,2,1]);
+assert.equal(initialBracket[0].nodes.filter(n=>n.bye).length,24);
+assert.equal(initialBracket[0].nodes.filter(n=>!n.bye).length,8);
+assert.equal(initialBracket[1].nodes.flatMap(n=>n.slots).filter(s=>s.player).length,24);
+assert.equal(initialBracket[1].nodes.flatMap(n=>n.slots).filter(s=>!s.player && s.source.startsWith('Winner of Preliminary')).length,8);
+assert.ok(initialBracket.slice(1).every(r=>r.nodes.every(n=>!n.actual)));
+for (const [index, source] of initialBracket[0].nodes.entries()) {
+  const target=initialBracket[1].nodes[Math.floor(index/2)];
+  assert.equal(source.next.id,target.id);
+  if(source.bye) assert.equal(target.slots[index%2].player.user_id,source.slots[0].player.user_id);
+}
+assert.equal(beyliveKnockoutRoundLabels(initialMatches).get(4),'Preliminary');
+// A full power-of-two field keeps its normal round name.
+const fullRound=initialMatches.filter(m=>m.bracket==='main').map(m=>({...m,status:'scheduled',players:[{user_id:'a'},{user_id:'b'}]}));
+assert.equal(beyliveKnockoutRoundLabels(fullRound).get(4),'Round of 64');
 for (const [index, count] of [32, 16, 8, 4, 2, 1].entries()) {
   const round = index + 4;
   const target = count <= 2 ? 7 : 4;
   assert.equal(await scalar("select count(*)::int from beylive_matches where tournament_id=$1 and round_no=$2 and bracket='main' and target_score=$3", [event, round, target]), count);
   await finishRound(event);
+  if(index===0) {
+    const generated=buildBeyliveBracket(await bracketMatches(event));
+    assert.ok(generated[1].nodes.every(n=>n.actual && n.slots.length===2));
+    for(const [i,source] of generated[0].nodes.entries()) {
+      assert.equal(generated[1].nodes[Math.floor(i/2)].slots[i%2].player.user_id,source.actual.winner_id);
+    }
+  }
 }
+const finishedBracket=buildBeyliveBracket(await bracketMatches(event));
+assert.equal(finishedBracket.at(-1).nodes[0].actual.status,'completed');
 assert.equal(await scalar("select status from tournaments where id=$1", [event]), "completed");
 assert.equal(await scalar("select count(*)::int from beylive_matches where tournament_id=$1 and bracket='losers'", [event]), 0);
 assert.equal(await scalar(`select count(*)::int from beylive_matches m where tournament_id=$1 and bracket='main'
