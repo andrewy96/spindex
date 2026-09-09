@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, type InputHTMLAttributes } from "react";
 import { Dict } from "@/i18n";
 import { TournamentFormat } from "@/lib/supabase";
 import {
@@ -14,6 +15,43 @@ import {
 
 const rowInputCls =
   "w-full rounded-md border border-edge bg-bg px-2 py-1.5 text-xs outline-none transition focus:border-accent";
+
+function StageNumberInput({
+  value,
+  onChange,
+  allowEmpty = false,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & { allowEmpty?: boolean }) {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  return (
+    <input
+      {...props}
+      value={draft ?? value}
+      onChange={(event) => {
+        const next = event.target.value;
+        setDraft(next);
+        const number = Number(next);
+        if (next === "" ? allowEmpty : Number.isInteger(number)
+          && number >= Number(props.min ?? -Infinity)
+          && number <= Number(props.max ?? Infinity)) {
+          onChange?.(event);
+        }
+      }}
+      onBlur={(event) => {
+        const next = event.currentTarget.value;
+        if (next !== "" && Number.isFinite(Number(next))) {
+          event.currentTarget.value = String(Math.min(
+            Number(props.max ?? Infinity),
+            Math.max(Number(props.min ?? -Infinity), Math.round(Number(next))),
+          ));
+          onChange?.(event);
+        }
+        setDraft(null);
+      }}
+    />
+  );
+}
 
 const STAGE_TYPES: TournamentStageType[] = [
   "group",
@@ -289,7 +327,7 @@ export default function TournamentFormatDesigner({
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-dim">
                       {entrantLabel ?? labels.formatEntrants}
                     </span>
-                    <input
+                    <StageNumberInput
                       type="number"
                       min={2}
                       max={256}
@@ -302,7 +340,7 @@ export default function TournamentFormatDesigner({
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-dim">
                       {labels.formatAdvance}
                     </span>
-                    <input
+                    <StageNumberInput
                       type="number"
                       min={1}
                       max={256}
@@ -315,7 +353,8 @@ export default function TournamentFormatDesigner({
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-dim">
                       {labels.formatGroups}
                     </span>
-                    <input
+                    <StageNumberInput
+                      allowEmpty
                       type="number"
                       min={stage.type === "swiss" ? 1 : 2}
                       max={stage.type === "swiss" ? Math.max(1, Math.floor(maxPlayers / 2)) : 8}
@@ -328,7 +367,8 @@ export default function TournamentFormatDesigner({
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-dim">
                       {labels.formatRounds}
                     </span>
-                    <input
+                    <StageNumberInput
+                      allowEmpty
                       type="number"
                       min={1}
                       max={16}
@@ -341,7 +381,7 @@ export default function TournamentFormatDesigner({
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-dim">
                       {labels.formatTargetScore}
                     </span>
-                    <input
+                    <StageNumberInput
                       type="number"
                       min={1}
                       max={30}
@@ -371,7 +411,8 @@ export default function TournamentFormatDesigner({
                       <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-dim">
                         {labels.formatSemifinalFinalScore}
                       </span>
-                      <input
+                      <StageNumberInput
+                        allowEmpty
                         type="number"
                         min={1}
                         max={30}
