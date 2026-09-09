@@ -76,6 +76,7 @@ const functions = [
 ];
 for (const [file, name] of functions) await db.exec(functionSql(file, name));
 await db.exec(readMigration(migration));
+await db.exec(readMigration("20260909000200_swiss_performance_seeding.sql"));
 await db.exec(`create trigger ensure_third_place after insert on beylive_match_players
   for each row execute function ensure_beylive_third_place_match()`);
 await db.query("select set_config('request.jwt.claim.sub', $1, false)", [host]);
@@ -167,9 +168,49 @@ for (let i = 0; i < 4; i++) await finishRound(smallId);
 assert.equal(await scalar("select count(*)::int from beylive_matches where tournament_id=$1 and bracket='losers' and target_score=7", [smallId]), 1);
 await finishRound(smallId);
 assert.equal(await scalar("select status from tournaments where id=$1", [smallId]), "completed");
+// Give later-numbered pools the strongest runners-up. Group 15 has a tied
+// 2-win winner with weaker stats than other pools' runners-up; group 16 has
+// a 1-win runner-up with better difference than several 2-win runners-up.
+// This distinguishes group position, wins, difference, and points scored.
+const rankedEvent = uid(1002);
+await createEvent(rankedEvent, 80, config);
+await db.query("update tournaments set current_round=3,status='started',live_enabled=true where id=$1", [rankedEvent]);
+for (let pool = 1; pool <= 20; pool++) {
+  const ids = [0, 1, 2, 3].map((offset) => uid((pool - 1) * 4 + offset + 1));
+  await db.query("update tournament_players set pool_no=$2 where tournament_id=$1 and user_id=any($3::uuid[])", [rankedEvent, pool, ids]);
+  const lossPoints = pool === 18 ? 1 : pool === 19 ? 2 : pool === 20 ? 3 : 0;
+  const opponentPoints = pool === 20 ? 1 : pool >= 17 ? 0 : 3;
+  let results = [[0,1,lossPoints],[0,2,0],[0,3,0],[1,2,opponentPoints],[1,3,opponentPoints],[2,3,0]];
+  if (pool === 15) results = [[0,1,3],[0,3,3],[1,2,3],[1,3,3],[2,0,3],[2,3,3]];
+  if (pool === 16) results = [[0,1,3],[0,2,0],[0,3,0],[2,1,3],[1,3,0],[3,2,0]];
+  for (const [index, [winner, loser, loserScore]] of results.entries()) {
+    const mid = await scalar("select create_beylive_match($1,1,$2,$3,1,4,$4::uuid[])", [rankedEvent, `pool_${pool}`, index + 1, [ids[winner], ids[loser]]]);
+    await db.query("update beylive_match_players set score=case when slot_no=1 then 4 else $2 end,result=case when slot_no=1 then 'win' else 'loss' end where match_id=$1", [mid, loserScore]);
+    await db.query("update beylive_matches set status='completed',winner_id=$2 where id=$1", [mid, ids[winner]]);
+  }
+}
+await db.query("select advance_beylive_swiss_top_cut($1)", [rankedEvent]);
+const byeIds = (await db.query("select winner_id from beylive_matches where tournament_id=$1 and bracket='main' and status='completed'", [rankedEvent])).rows.map((r) => r.winner_id);
+const winners = Array.from({ length: 20 }, (_, i) => uid(i * 4 + 1));
+const runnersByPerformance = [19,20,18,17,15,...Array.from({length:14},(_,i)=>i+1),16].map((p) => uid((p-1)*4+2));
+assert.equal(byeIds.length, 24);
+assert.deepEqual([...byeIds].sort(), [...winners,...runnersByPerformance.slice(0,4)].sort());
+// Read the generated bracket slots back into seed order to check ALL runner-up
+// ranks, including the points-scored tiebreak between pools 20 and 18.
+const slots = await scalar("select beylive_seed_slots(40)");
+const entrants = (await db.query(`select mp.user_id from beylive_matches m join beylive_match_players mp on mp.match_id=m.id
+  where m.tournament_id=$1 and m.bracket='main' order by m.match_no,mp.slot_no`, [rankedEvent])).rows.map((r)=>r.user_id);
+const seeds = [];
+let entrantIndex = 0;
+for (const seed of slots) if (seed <= 40) seeds[seed-1] = entrants[entrantIndex++];
+assert.deepEqual(new Set(seeds.slice(0,20)), new Set(winners));
+assert.deepEqual(seeds.slice(20), runnersByPerformance);
+// Calling advance while the play-in is incomplete must not reseed it.
+await assert.rejects(db.query("select advance_beylive_swiss_top_cut($1)", [rankedEvent]), /round_not_complete/);
+assert.equal(await scalar("select count(*)::int from beylive_matches where tournament_id=$1 and bracket='main'", [rankedEvent]), 32);
 await db.query("select set_config('request.jwt.claim.sub', $1, false)", [uid(99)]);
 await assert.rejects(db.query("select advance_beylive_swiss_top_cut($1)", [event]), /not_allowed/);
 await assert.rejects(db.exec("insert into beylive_matches(bracket) values ('pool_129')"), /check constraint/);
 await assert.rejects(db.exec("insert into tournament_players(tournament_id,user_id,pool_no) values(gen_random_uuid(),gen_random_uuid(),129)"), /check constraint/);
 await db.close();
-console.log("PASS: 80 players, 20 balanced Swiss pools, top 2 each, 24 byes, 39 knockout matches, semifinal/final FT7, optional third place, legacy scores and authorization.");
+console.log("PASS: 80 players, 20 Swiss pools, top 2 each, performance-ranked qualifiers and 24 byes, 39 knockout matches, semifinal/final FT7, optional third place, legacy scores and authorization.");

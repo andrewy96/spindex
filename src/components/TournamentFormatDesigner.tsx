@@ -211,6 +211,7 @@ export default function TournamentFormatDesigner({
                 {labels.formatFourPlayerSwissPreset}
               </button>
               <p className="mt-1 text-xs leading-relaxed text-ink-dim">{labels.formatFourPlayerSwissHelp}</p>
+              <p className="mt-1 text-xs leading-relaxed text-ink-dim">{labels.formatSwissQualifierSeeding}</p>
             </div>
           )}
           <div className="flex flex-wrap items-center justify-between gap-2">

@@ -16,7 +16,10 @@
 4. Save the event. Register/check in all **80** players into the joined lineup before drawing pools. Choose **Draw pools**, and verify that each of the 20 pools has exactly 4 players. Existing manual placements are preserved; **Undo draw** clears placements before matches have been generated.
 5. Start BEYLIVE. Record results for all pools, then advance the round. Repeat for all 3 Swiss rounds. Players stay within their own pool; later pairings prefer unplayed opponents and similar win records.
 6. After the last Swiss round, advance to the knockout stage. The top 2 in each pool qualify. Ranking uses wins, score difference, points scored, fewer losses, seed, then player ID as the final deterministic fallback. Announce the tiebreakers before play. Three rounds with only four players can effectively produce an everyone-plays-everyone schedule; second-place ties are still possible.
-7. The 40 qualifiers enter a 64-slot seeded bracket: **8 opening matches and 24 byes**, followed by the round of 32, round of 16, quarterfinals, semifinals and final. Byes complete automatically. All matches through the quarterfinals are first-to-4; semifinals and final switch automatically to first-to-7.
+7. Rank the 40 qualifiers by **group position → match wins → point difference → points scored**. Exact ties use fewer losses, original seed, then player ID. Group numbers do not affect qualifier seeding. This places all 20 group winners ahead of all 20 runners-up.
+8. **Seeds 1–24 receive byes**: all 20 group winners plus the 4 best-performing runners-up. Seeds 25–40 play **8 preliminary matches**. The 8 winners join the 24 bye players in the round of 32, then continue through the round of 16, quarterfinals, semifinals and final. Byes complete automatically. All matches through the quarterfinals are first-to-4; semifinals and final switch automatically to first-to-7.
+
+Performance seeding applies when the knockout bracket is first generated. A bracket that has already been generated keeps its existing seeds and matches.
 
 The preset disables the third-place match and consolation bracket. If a third-place match is wanted, enable it in the knockout stage before starting; it also uses the final's 7-point target.
 

@@ -544,6 +544,7 @@
     "formatAdvance": "Advance",
     "formatTargetScore": "First to",
     "formatSemifinalFinalScore": "Semifinal / final first to",
+    "formatSwissQualifierSeeding": "Qualifiers are seeded by group position, match wins, point difference, then points scored. With 40 qualifiers, seeds 1–24 get byes and seeds 25–40 play 8 preliminary matches before the round of 32.",
     "formatFourPlayerSwissPreset": "Use 4-player Swiss groups → top 2 → knockout",
     "formatFourPlayerSwissHelp": "Uses the event player limit: 80 players = 20 groups, 40 qualifiers. Three Swiss rounds, first to 4; semifinals and final first to 7. Advance is the total across all groups. For exactly 4 per group, use a multiple of 4 and fill every seat before drawing pools. Ties: wins, score difference, points scored, fewer losses, seed, then player ID.",
     "formatSeeding": "Seeding",
